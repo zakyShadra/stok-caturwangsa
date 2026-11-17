@@ -1,3 +1,99 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Token dari DESIGN.md. Latar halaman: gradient mesh lembut warna
+   perusahaan (mint + putih + teal muda), bukan satu warna datar.
+   Bukan gradient ungu/biru generik. */
+body {
+  background:
+    radial-gradient(600px 300px at 15% 0%, rgba(178, 235, 236, 0.55), transparent 70%),
+    radial-gradient(500px 260px at 90% 10%, rgba(255, 255, 255, 0.9), transparent 70%),
+    #e8faf7;
+  background-attachment: fixed;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Tekan tombol: scale 0.98 (DESIGN.md). */
+.btn-press {
+  transition: transform 150ms ease-out;
+}
+.btn-press:active {
+  transform: scale(0.98);
+}
+
+/* Entrance stagger (code-xr pola 11): fade + naik 12px, 400ms,
+   delay per kartu 50ms. Transform + opacity saja. */
+@keyframes entrance {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.entrance {
+  animation: entrance 400ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Transisi halaman: fade + naik 8px, 200ms ease-out. */
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.page-enter {
+  animation: page-enter 200ms ease-out both;
+}
+
+/* Centang sukses: scale-in 200ms. */
+@keyframes success-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.success-pop {
+  animation: success-pop 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Garis scan di viewfinder: bergerak naik-turun pelan di dalam kotak.
+   Ini satu-satunya loop di aplikasi, dan punya fungsi jelas (menandai
+   area scan aktif). Berhenti kalau user minta reduced motion. */
+@keyframes scan-line {
+  0%,
+  100% {
+    transform: translateY(-70px);
+    opacity: 0.9;
+  }
+  50% {
+    transform: translateY(70px);
+    opacity: 0.9;
+  }
+}
+.scan-line {
+  animation: scan-line 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entrance,
+  .page-enter,
+  .success-pop,
+  .scan-line {
+    animation: none;
+  }
+  .btn-press {
+    transition: none;
+  }
+}
