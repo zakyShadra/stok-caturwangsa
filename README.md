@@ -1,16 +1,21 @@
-# Stok Sabun Palem
+# Sabun Palem (Absensi + Stok)
 
-Aplikasi stok barang PT Catur Wangsa Indah (Sabun Palem).
-Menggantikan kartu kertas "KARTU PERSEDIAAN BARANG" dan stock opname manual.
+Satu aplikasi untuk PT Catur Wangsa Indah (Sabun Palem): absensi
+karyawan dan stok barang gudang, dalam satu tempat.
 
-Cara pakainya simpel: staf gudang scan barcode barang yang masuk atau
-keluar gudang, sistem yang catat dan hitung stoknya. Semua barang keluar
-lewat gudang, jadi satu scan di sini mencatat semua penjualan, online
-maupun offline.
+- Absensi: absen masuk/pulang, tandai Izin/Cuti, bukti kerja
+  harian (foto/dokumen), daftar karyawan, laporan rekap.
+- Stok: scan barcode barang masuk/keluar gudang, daftar stok,
+  riwayat transaksi. Menggantikan kartu kertas
+  "KARTU PERSEDIAAN BARANG" dan stock opname manual.
 
-> Status: UI selesai. Backend (Cloudflare Workers + Google Sheets)
-> belum dibangun. Data saat ini disimpan di memori, hilang kalau halaman
-> di-refresh.
+Semua barang keluar lewat gudang, jadi satu scan di sini mencatat
+semua penjualan, online maupun offline.
+
+> Status: UI selesai. Backend (Cloudflare Workers + Google Sheets
+> + R2 untuk bukti kerja) belum dibangun. Data saat ini disimpan
+> di memori, hilang kalau halaman di-refresh, kecuali status absen
+> hari ini yang disimpan di localStorage dan direset keesokan hari.
 
 ## Cara jalanin
 
@@ -33,20 +38,62 @@ npm run preview
 Screenshot QA (butuh Playwright + preview jalan di port 5199):
 
 ```bash
-node scripts/shots.mjs
+node scripts/shots-merged.mjs
 ```
 
 Hasilnya di `~/workspace/your_files/stok-caturwangsa-ui/`.
 
+## Akun
+
+Login saat ini masih di sisi UI (auth asli nanti pakai Cloudflare
+Access dengan allowlist Gmail). Akun yang tersedia:
+
+| Email | Kata sandi | Role |
+|---|---|---|
+| admin@sabunpalem.co.id | admin123 | Admin (Zaky) |
+| bos@sabunpalem.co.id | bos123 | Bos (Pak Yunus) |
+| manager@sabunpalem.co.id | manager123 | Manager (Ibu Abe) |
+| staff@sabunpalem.co.id | staff123 | Staff (Budi Santoso) |
+
+Role: Admin, Bos, dan Manager melihat semua halaman termasuk
+Karyawan dan Laporan, serta daftar hadir dan bukti kerja semua
+karyawan. Staff hanya melihat absensi dan stoknya sendiri.
+
 ## Halaman
 
-| Rute | Isi |
-|---|---|
-| `/` | Beranda: 3 tombol raksasa (Barang Masuk, Barang Keluar, Lihat Stok) + ringkasan |
-| `/scan/masuk` | Scan barcode barang masuk |
-| `/scan/keluar` | Scan barcode barang keluar |
-| `/stok` | Daftar stok semua produk, ketuk untuk detail per lokasi |
-| `/riwayat` | Log transaksi (Tanggal, Keterangan, Masuk, Keluar, Sisa) |
+| Rute | Isi | Role |
+|---|---|---|
+| `/login` | Masuk dengan email + kata sandi | Semua |
+| `/` | Beranda gabungan (lihat bawah) | Semua |
+| `/absensi` | Absen masuk/pulang, bukti kerja, daftar hadir, tandai Izin/Cuti | Semua |
+| `/karyawan` | Daftar + tambah/ubah/hapus karyawan | Admin, Bos, Manager |
+| `/laporan` | Rekap kehadiran per periode + unduh CSV | Admin, Bos, Manager |
+| `/scan/masuk` | Scan barcode barang masuk | Semua |
+| `/scan/keluar` | Scan barcode barang keluar | Semua |
+| `/stok` | Daftar stok semua produk, ketuk untuk detail per lokasi | Semua |
+| `/riwayat` | Log transaksi (Tanggal, Keterangan, Masuk, Keluar, Sisa) | Semua |
+
+Beranda staf: kartu "Absen saya hari ini" (jam live, tombol Absen
+Masuk/Pulang), 3 tombol raksasa (Barang Masuk, Barang Keluar,
+Lihat Stok), rekap saya bulan ini, ringkasan stok.
+
+Beranda Admin/Bos/Manager: panel "Perlu perhatian hari ini"
+(belum absen, telat, bukti kerja yang belum dilampirkan),
+statistik kehadiran, grafik 7 hari, stok menipis.
+
+## Alur absensi
+
+1. Staf ketuk Absen Masuk di Beranda. Masuk setelah pukul 08:15
+   dihitung Telat.
+2. Setelah absen masuk, staf melampirkan bukti kerja hari ini
+   di halaman Absensi (foto atau dokumen, bisa lebih dari satu).
+3. Bos dan Manager melihat daftar hadir + bukti kerja tiap
+   karyawan di halaman Absensi. Foto bisa diketuk untuk diperbesar.
+4. Manager/Admin menandai Izin/Cuti lewat form di halaman Absensi.
+5. Staf ketuk Absen Pulang saat selesai kerja.
+6. Laporan: pilih rentang tanggal, lihat rekap per karyawan
+   (Telat/Hadir/Izin/Total, urut dari yang paling sering telat),
+   unduh CSV untuk Excel.
 
 ## Alur scan
 
@@ -71,28 +118,48 @@ stok per lokasi mengikuti pola tab Agustus 2026 (sebagian besar
 di Gudang Klinik). Riwayat awal dibuat dari keterangan yang ada
 di kartu kertas asli.
 
+Data karyawan: 10 karyawan, divisi Produksi/Gudang/Admin/Sales/IT.
+Logika absensi (alur masuk/pulang, batas telat 08:15, Izin/Cuti,
+rekap bulanan) diambil dari dashboard absensi lama (repo
+caturwangsa, sudah diarsip), tapi semua halaman absensi di sini
+dibangun ulang dari nol mengikuti bahasa desain aplikasi stok.
+
 ## Struktur kode
 
 ```
 src/
   lib/
-    types.ts      Tipe data (Product, Transaction, LocationId)
-    products.ts   Daftar 24 produk + riwayat awal
-    api.ts        Lapisan data. Bentuk fungsinya meniru
-                  endpoint Workers yang akan datang:
-                  GET /api/stock, GET /api/log, POST /api/scan.
-                  Nanti tinggal ganti isi fungsi ini dengan fetch.
-    store.tsx     State global (React Context)
-    beep.ts       Bunyi beep + getar saat scan berhasil
+    types.ts          Tipe data stok (Product, Transaction, LocationId)
+    products.ts       Daftar 24 produk + riwayat awal
+    api.ts            Lapisan data stok. Bentuk fungsinya meniru
+                      endpoint Workers yang akan datang:
+                      GET /api/stock, GET /api/log, POST /api/scan.
+                      Nanti tinggal ganti isi fungsi ini dengan fetch.
+    store.tsx         State global stok (React Context)
+    beep.ts           Bunyi beep + getar saat scan berhasil
+    attendance.ts     Tipe + data absensi (Role, User, Employee,
+                      AttendanceRecord, EvidenceFile), batas telat
+                      08:15, helper tanggal/waktu WIB
+    auth.tsx          Auth (React Context), login/logout,
+                      tersimpan di localStorage
+    attendance-state.tsx  State absensi (React Context): absen
+                      masuk/pulang (tersimpan di localStorage
+                      per hari) + bukti kerja per karyawan
   components/
     ui.tsx            Tombol besar, badge status, stepper, pilih lokasi
-    BottomNav.tsx     Navigasi bawah, pill berjalan (code-xr pola 1)
+    Layout.tsx        Sidebar desktop (grup UTAMA/ABSENSI/STOK,
+                      pill berjalan) + wrapper konten
+    BottomNav.tsx     Navigasi bawah HP, 4 item, pill berjalan
     BarcodeScanner.tsx Kamera + BarcodeDetector (native) / ZXing (fallback)
   pages/
-    Home.tsx    Beranda
-    Scan.tsx    Scan masuk/keluar + cari manual + sukses
-    Stock.tsx   Daftar stok + detail per lokasi
-    History.tsx Riwayat transaksi
+    Login.tsx      Masuk
+    Home.tsx       Beranda gabungan (staf / Admin-Bos-Manager)
+    Attendance.tsx Absensi + bukti kerja + tandai Izin/Cuti
+    Employees.tsx  Daftar + kelola karyawan
+    Reports.tsx    Rekap kehadiran + unduh CSV
+    Scan.tsx       Scan masuk/keluar + cari manual + sukses
+    Stock.tsx      Daftar stok + detail per lokasi
+    History.tsx    Riwayat transaksi
 ```
 
 ## Desain
@@ -104,16 +171,23 @@ Ringkasan:
   latar mint #E8FAF7, font Quicksand.
 - Baby-boomer friendly: tombol utama minimal 56px, teks minimal 14px,
   semua tombol ada label teksnya, satu layar satu tugas.
-- Hijau = Barang Masuk, oranye = Barang Keluar, biru = Lihat Stok.
-  Merah hanya untuk Habis dan error.
+- Hijau = Barang Masuk dan Hadir, oranye = Barang Keluar dan Telat,
+  biru = Lihat Stok dan Izin/Cuti. Merah hanya untuk Habis dan error.
 - Animasi: pill nav berjalan 0.45s, kartu masuk stagger 50ms,
   semua di bawah 300ms, transform + opacity saja.
+- Catatan teknis: overlay fullscreen (misal lightbox foto bukti
+  kerja) harus dirender lewat React Portal ke document.body,
+  karena wrapper halaman punya animasi transform yang membuat
+  position:fixed di dalamnya relatif ke halaman, bukan ke layar.
 
 ## Yang belum ada (nanti)
 
 - Backend Workers + Google Sheets (append log, formula SUMIFS).
   Struktur `lib/api.ts` sudah disiapkan untuk itu.
-- Login + nama staf asli (saat ini staf ditulis "Budi").
+- Upload bukti kerja ke Workers + R2 (saat ini file hanya
+  di memori, hilang kalau halaman di-refresh).
+- Auth asli: Cloudflare Access dengan allowlist Gmail (tanpa PIN).
+- User/allowlist di D1, Zaky sebagai admin.
 - Stock opname mode scan massal (scan semua barang, bandingkan
   dengan stok sistem).
 - Print barcode internal untuk 4 produk yang belum punya barcode.

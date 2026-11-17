@@ -86,14 +86,66 @@ body {
   animation: scan-line 2.4s ease-in-out infinite;
 }
 
+/* Indikator pill sidebar yang berjalan (code-xr pola 6): satu pill
+   yang sama meluncur vertikal ke item aktif, bukan tiap item menyala
+   sendiri. Posisi diatur dari JS (top + height), gerak 0.45s. */
+.sidebar-pill {
+  position: absolute;
+  top: 0;
+  left: 12px;
+  right: 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-left: 3px solid #00b9be;
+  transition:
+    transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    height 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.2s ease-out;
+  pointer-events: none;
+}
+
+/* Batang grafik tumbuh dari bawah (code-xr pola 12): scaleY 0 ke 1,
+   transform-origin bottom, stagger 60ms antar batang via --bar-i. */
+@keyframes grow-bar {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+.animate-bar {
+  transform-origin: bottom;
+  animation: grow-bar 400ms ease-out both;
+  animation-delay: calc(var(--bar-i, 0) * 60ms);
+}
+
+/* Pop kecil untuk badge yang berubah dan tombol sukses (150-200ms). */
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.animate-scale-in {
+  animation: scale-in 150ms ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .entrance,
   .page-enter,
   .success-pop,
-  .scan-line {
+  .scan-line,
+  .animate-bar,
+  .animate-scale-in {
     animation: none;
   }
-  .btn-press {
+  .btn-press,
+  .sidebar-pill {
     transition: none;
   }
 }

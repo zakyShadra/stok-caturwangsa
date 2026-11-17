@@ -1,9 +1,16 @@
-# DESIGN.md - Stok Sabun Palem (auto-caturwangsa)
+# DESIGN.md - Sabun Palem (Absensi + Stok)
 
-Aplikasi stok barang PT Catur Wangsa Indah (Sabun Palem).
-Menggantikan kartu kertas "KARTU PERSEDIAAN BARANG" dan stock opname
-manual. Alur: scan barcode di gerbang gudang, sistem catat Masuk/Keluar,
-stok dihitung otomatis dari log transaksi.
+Satu aplikasi PT Catur Wangsa Indah (Sabun Palem): absensi
+karyawan dan stok barang gudang. Absensi dibangun ulang dari nol
+di dalam aplikasi stok (dashboard absensi lama sudah diarsip),
+dengan bahasa desain yang sama, supaya satu app terasa konsisten.
+
+- Absensi: absen masuk/pulang, tandai Izin/Cuti, bukti kerja
+  harian (foto/dokumen yang dilampirkan staf), daftar karyawan,
+  laporan rekap.
+- Stok: scan barcode di gerbang gudang, sistem catat Masuk/Keluar,
+  stok dihitung otomatis dari log transaksi. Menggantikan kartu
+  kertas "KARTU PERSEDIAAN BARANG" dan stock opname manual.
 
 Pengguna utama: staf gudang usia 60-70 tahun, melek teknologi rendah,
 pakai HP di gudang. Pengguna kedua: Ibu Abe (manager, lulusan Telkom),
@@ -18,7 +25,9 @@ untuk yang kedua. Bukan dua UI, satu UI yang simpel di permukaan.
   dashboard absensi caturwangsa.
 - Layout: Stripe (dashboard bersih, angka tabular, kartu permukaan
   near-white, pertanyaan sebagai judul). Mobile-first: staf gudang
-  pegang HP, bukan laptop.
+  pegang HP, bukan laptop. Sidebar desktop dari dashboard absensi
+  lama (240px, teal gelap, grup UTAMA/ABSENSI/STOK), pill berjalan
+  code-xr.
 - Shape: Linear (skala radius 8/12/16, hairline border, tanpa shadow
   berat).
 - Type: Quicksand (font situs resmi perusahaan).
@@ -52,7 +61,8 @@ untuk yang kedua. Bukan dua UI, satu UI yang simpel di permukaan.
 Catatan: hijau untuk Masuk, oranye untuk Keluar. Bukan hijau-merah,
 karena Keluar bukan error, dan oranye lebih ramah dibaca sebagai
 "barang pergi" daripada merah yang terasa seperti alarm. Merah hanya
-untuk Habis dan error.
+untuk Habis dan error. Badge absensi memakai token yang sama:
+Hadir hijau, Telat oranye, Izin/Cuti biru.
 
 ## Typography
 
@@ -93,17 +103,36 @@ untuk Habis dan error.
 
 - Mobile-first, konten max-width 720px di tengah (bukan 1200px:
   ini aplikasi kerja satu tangan, bukan dashboard kantor).
-- Navigasi bawah (bottom nav) di mobile, 3 item: Beranda, Stok,
-  Riwayat. Item aktif ditandai satu pill yang berjalan (code-xr
-  pola 1), bukan tiap item menyala sendiri.
-- Di desktop, nav bawah tetap dipakai (konsisten dengan mobile),
-  konten max-width 720px tetap di tengah.
+- Navigasi bawah (bottom nav) di mobile, 4 item: Beranda, Absensi,
+  Stok, Riwayat. Item aktif ditandai satu pill yang berjalan
+  (code-xr pola 1), bukan tiap item menyala sendiri.
+- Di desktop, sidebar kiri 240px teal gelap, grup UTAMA (Beranda),
+  ABSENSI (Absensi, Karyawan, Laporan), STOK (Barang Masuk,
+  Barang Keluar, Lihat Stok, Riwayat). Satu pill berjalan menandai
+  item aktif, posisinya diukur dari DOM. Karyawan dan Laporan
+  hanya muncul untuk Admin, Bos, dan Manager.
 - Padding konten: 20px mobile, 32px desktop.
 - Gap antar kartu: 16px. Gap antar section: 32px.
-- Home: 3 tombol raksasa vertikal (Masuk hijau, Keluar oranye,
-  Lihat Stok biru), masing-masing tinggi 96px, ikon + label teks
-  besar. Di bawahnya satu baris ringkas: total produk, produk
-  menipis, produk habis.
+- Beranda staf: kartu "Absen saya hari ini" di atas (jam live
+  besar, tombol Absen Masuk/Pulang), lalu 3 tombol raksasa
+  vertikal (Masuk hijau, Keluar oranye, Lihat Stok biru),
+  masing-masing tinggi 96px, ikon + label teks besar. Di bawahnya
+  rekap saya bulan ini dan ringkasan stok.
+- Beranda Admin/Bos/Manager: panel "Perlu perhatian hari ini"
+  (belum absen, telat, bukti kerja yang belum dilampirkan),
+  baris statistik, grafik batang 7 hari, stok menipis.
+- Absensi: kartu bukti kerja di atas untuk staf (tombol
+  "Lampirkan File" setelah absen masuk, thumbnail + nama file +
+  tombol Hapus). Untuk Admin/Bos/Manager: baris "Bukti kerja:
+  X dari Y yang hadir sudah melampirkan", form tandai Izin/Cuti,
+  lalu kartu per karyawan (nama, divisi, badge status, jam
+  Masuk/Pulang, bukti kerja tiap karyawan yang bisa diketuk
+  untuk diperbesar lewat lightbox).
+- Karyawan: kartu per karyawan (nama, jabatan, divisi, no HP,
+  badge Aktif, tombol Ubah/Hapus), form tambah/ubah di atas.
+- Laporan: pemilih rentang tanggal, tombol Unduh CSV, kalimat
+  ringkasan periode, kartu per karyawan (Telat/Hadir/Izin/Total,
+  urut dari yang paling sering telat).
 - Scan: kamera memenuhi layar dengan kotak viewfinder di tengah
   (kotak 280x160px, sudut tebal, garis scan). Di bawah kamera:
   tombol "Cari Manual" dan tombol senter. Setelah scan: kartu
@@ -131,24 +160,41 @@ untuk Habis dan error.
 - Sukses scan: bunyi beep (Web Audio, 880Hz, 80ms) + getar
   50ms di HP (navigator.vibrate), supaya staf tahu scan berhasil
   tanpa harus lihat layar.
+- Lightbox foto bukti kerja: overlay gelap fullscreen, foto di
+  tengah, tombol tutup X di kanan atas, ketuk di luar foto untuk
+  menutup. Harus dirender lewat React Portal ke document.body,
+  karena wrapper halaman (.page-enter) punya animasi transform
+  yang membuat position:fixed di dalamnya relatif ke halaman.
 - Tanpa animasi loop tanpa akhir. Tanpa parallax. Ini alat kerja
   gudang, bukan landing page.
 
 ## Pages
 
-1. **Beranda** - logo + nama perusahaan, 3 tombol raksasa
-   (Barang Masuk, Barang Keluar, Lihat Stok), ringkasan kecil
-   (total produk, menipis, habis).
-2. **Scan Masuk / Scan Keluar** - kamera + viewfinder, tombol
+1. **Login** - logo + nama perusahaan, input email dan kata
+   sandi besar, tombol akun cepat (ketuk untuk mengisi).
+2. **Beranda** - staf: kartu absen hari ini + 3 tombol raksasa
+   (Barang Masuk, Barang Keluar, Lihat Stok) + rekap bulan ini
+   + ringkasan stok. Admin/Bos/Manager: panel perhatian +
+   statistik + grafik 7 hari + stok menipis.
+3. **Absensi** - staf: kartu bukti kerja (upload setelah absen
+   masuk) + pilih tanggal + kartu absen saya. Admin/Bos/Manager:
+   pilih tanggal + hitungan bukti kerja + form tandai Izin/Cuti
+   + kartu per karyawan dengan bukti kerjanya. Rekap bulanan
+   di bawah.
+4. **Karyawan** (Admin/Bos/Manager) - daftar karyawan, tambah/
+   ubah/hapus.
+5. **Laporan** (Admin/Bos/Manager) - rentang tanggal, unduh CSV,
+   rekap per karyawan.
+6. **Scan Masuk / Scan Keluar** - kamera + viewfinder, tombol
    Cari Manual, tombol senter. Setelah scan: kartu produk, stepper
    jumlah, pilih lokasi (Gudang Klinik / Gudang Kantor / Kantor),
    tombol Simpan. Setelah simpan: layar sukses.
-3. **Cari Manual** - search bar + dropdown produk (untuk 4 produk
+7. **Cari Manual** - search bar + dropdown produk (untuk 4 produk
    tanpa barcode dan saat kamera gagal). Pilih produk, lanjut ke
    kartu produk yang sama seperti hasil scan.
-4. **Stok** - search bar, daftar 24 produk, badge Aman/Menipis/
+8. **Stok** - search bar, daftar 24 produk, badge Aman/Menipis/
    Habis, ketuk untuk detail (stok per lokasi, pergerakan terakhir).
-5. **Riwayat** - log transaksi, filter Masuk/Keluar/Semua, kolom
+9. **Riwayat** - log transaksi, filter Masuk/Keluar/Semua, kolom
    mirip kartu kertas: Tanggal, Keterangan, Masuk, Keluar, Sisa.
 
 ## Do's and Don'ts
