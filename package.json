@@ -1,17 +1,9 @@
 {
-  "name": "stok-init",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "lint": "oxlint",
-    "preview": "vite preview"
-  },
   "dependencies": {
+    "@zxing/browser": "^0.2.1",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.5"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
@@ -20,9 +12,20 @@
     "@vitejs/plugin-react": "^6.1.2",
     "autoprefixer": "^10.6.2",
     "oxlint": "^1.90.0",
+    "playwright-core": "^1.65.1",
     "postcss": "^8.5.33",
     "tailwindcss": "^3.4.19",
     "typescript": "~7.0.2",
     "vite": "^8.3.6"
-  }
+  },
+  "name": "stok-caturwangsa",
+  "private": true,
+  "scripts": {
+    "build": "tsc -b && vite build",
+    "dev": "vite",
+    "lint": "oxlint",
+    "preview": "vite preview"
+  },
+  "type": "module",
+  "version": "0.0.0"
 }
