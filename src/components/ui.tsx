@@ -4,6 +4,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { LOCATIONS } from '../lib/types';
 import type { LocationId, StockStatus } from '../lib/types';
+import type { AttendanceStatus } from '../lib/attendance';
 
 export function StatusBadge({ status }: { status: StockStatus }) {
   const map: Record<StockStatus, { label: string; dot: string; cls: string }> = {
@@ -22,11 +23,37 @@ export function StatusBadge({ status }: { status: StockStatus }) {
   );
 }
 
-export function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+// Badge status absensi: pola yang sama dengan StatusBadge (dot + label),
+// warnanya mengikuti arti statusnya: Hadir hijau, Telat oranye,
+// Izin/Cuti biru.
+export function AttendanceBadge({ status }: { status: AttendanceStatus }) {
+  const map: Record<AttendanceStatus, { dot: string; cls: string }> = {
+    Hadir: { dot: 'bg-success', cls: 'bg-success/10 text-success-ink' },
+    Telat: { dot: 'bg-warning', cls: 'bg-warning/10 text-warning-ink' },
+    Izin: { dot: 'bg-info', cls: 'bg-info/10 text-info-ink' },
+    Cuti: { dot: 'bg-info', cls: 'bg-info/10 text-info-ink' },
+  };
+  const s = map[status];
+  return (
+    <span
+      className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-bold ${s.cls}`}
+    >
+      <span className={`h-2 w-2 rounded-full ${s.dot}`} />
+      {status}
+    </span>
+  );
+}
+
+export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
   return (
     <header className="mb-6">
-      <h1 className="text-[28px] font-bold leading-tight text-ink">{title}</h1>
-      {subtitle ? <p className="mt-1 text-base text-ink-muted">{subtitle}</p> : null}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-[28px] font-bold leading-tight text-ink">{title}</h1>
+          {subtitle ? <p className="mt-1 text-base text-ink-muted">{subtitle}</p> : null}
+        </div>
+        {action}
+      </div>
     </header>
   );
 }
