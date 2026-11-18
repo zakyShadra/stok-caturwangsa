@@ -105,10 +105,10 @@ function IconLogout() {
 }
 
 // Nav dibagi 4 grup: UTAMA, ABSENSI, STOK, PEMASARAN. Grup dipisah label
-// small-caps + padding, bukan garis divider. Karyawan hanya muncul
-// untuk Admin (satu-satunya yang mengelola karyawan); Laporan untuk
-// Admin/Bos/Manager; Staff tidak melihat keduanya. Pemasaran untuk
-// semua role.
+// small-caps + padding, bukan garis divider. Karyawan muncul untuk
+// Admin/Bos/Manager (hanya Admin yang mengelola; Bos/Manager melihat
+// saja); Laporan untuk Admin/Bos/Manager; Staff tidak melihat keduanya.
+// Pemasaran untuk semua role.
 const NAV_GROUPS = [
   {
     label: 'Utama',
@@ -120,7 +120,7 @@ const NAV_GROUPS = [
     label: 'Absensi',
     items: [
       { to: '/absensi', label: 'Absensi', Icon: IconClipboard, roles: ['Admin', 'Bos', 'Manager', 'Staff'] },
-      { to: '/karyawan', label: 'Karyawan', Icon: IconUsers, roles: ['Admin'] },
+      { to: '/karyawan', label: 'Karyawan', Icon: IconUsers, roles: ['Admin', 'Bos', 'Manager'] },
       { to: '/laporan', label: 'Laporan', Icon: IconChart, roles: ['Admin', 'Bos', 'Manager'] },
     ],
   },

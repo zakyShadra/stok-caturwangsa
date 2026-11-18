@@ -1,7 +1,8 @@
 // Aplikasi gabungan Sabun Palem: absensi + stok dalam satu app.
 // - /login terbuka untuk semua. Semua halaman lain butuh login.
-// - Karyawan hanya untuk Admin (peran lain dialihkan ke Beranda):
-//   Admin satu-satunya yang menambah/mengubah/menghapus karyawan.
+// - Karyawan untuk Admin/Bos/Manager (Staff dialihkan ke Beranda):
+//   Admin satu-satunya yang menambah/mengubah/menghapus karyawan;
+//   Bos/Manager hanya melihat (mode lihat saja).
 // - Laporan untuk Admin/Bos/Manager (Staff dialihkan ke Beranda).
 // - Stok (scan, daftar stok, riwayat) bisa diakses semua role.
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
@@ -38,14 +39,6 @@ function RequireManagement({ children }: { children: JSX.Element }) {
   return children;
 }
 
-// Karyawan hanya untuk Admin (matriks peran, 18 Nov 2026).
-function RequireAdmin({ children }: { children: JSX.Element }) {
-  const { user } = useAuth();
-  if (!user) return <Navigate to="/login" replace />;
-  if (user.role !== 'Admin') return <Navigate to="/" replace />;
-  return children;
-}
-
 export default function App() {
   return (
     <AuthProvider>
@@ -70,12 +63,15 @@ export default function App() {
                 >
               <Route index element={<Home />} />
               <Route path="absensi" element={<Attendance />} />
+              {/* Karyawan: Admin mengelola, Bos/Manager melihat saja
+                  (tombol ubah disembunyikan di halamannya). Staff
+                  dialihkan ke Beranda oleh RequireManagement. */}
               <Route
                 path="karyawan"
                 element={
-                  <RequireAdmin>
+                  <RequireManagement>
                     <Employees />
-                  </RequireAdmin>
+                  </RequireManagement>
                 }
               />
               <Route

@@ -1,7 +1,8 @@
-// Halaman Karyawan (Admin saja). Daftar karyawan dalam bentuk
-// kartu, tambah/ubah lewat form, hapus lewat tombol di kartu.
-// Admin satu-satunya yang mengelola karyawan (matriks peran).
+// Halaman Karyawan (Admin/Bos/Manager). Daftar karyawan dalam bentuk
+// kartu; tambah/ubah/hapus hanya Admin. Bos/Manager melihat saja
+// (matriks peran, audit 18 Nov 2026).
 import { useState } from 'react';
+import { useAuth } from '../lib/auth';
 import { EMPLOYEES } from '../lib/attendance';
 import type { Employee } from '../lib/attendance';
 import { BigButton, PageHeader } from '../components/ui';
@@ -15,6 +16,8 @@ const DIVISIONS = ['Produksi', 'Gudang', 'Admin', 'Sales', 'IT', 'Umum'];
 const emptyForm = { name: '', division: 'Produksi', position: '', phone: '' };
 
 export default function Employees() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'Admin';
   const [employees, setEmployees] = useState<Employee[]>(EMPLOYEES);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -65,11 +68,19 @@ export default function Employees() {
         title="Karyawan"
         subtitle={`Total ${employees.length} karyawan`}
         action={
-          <BigButton tone="primary" onClick={openAdd} className="w-full sm:w-auto">
-            + Tambah Karyawan
-          </BigButton>
+          isAdmin ? (
+            <BigButton tone="primary" onClick={openAdd} className="w-full sm:w-auto">
+              + Tambah Karyawan
+            </BigButton>
+          ) : undefined
         }
       />
+
+      {!isAdmin ? (
+        <p className="mb-6 rounded-button bg-surface-soft px-4 py-3 text-base text-ink-muted">
+          Mode lihat saja: hanya Admin yang bisa menambah, mengubah, atau menghapus karyawan.
+        </p>
+      ) : null}
 
       {note ? (
         <p className="mb-6 rounded-button bg-primary-soft/60 px-4 py-3 text-base font-bold text-primary-deep">
@@ -164,22 +175,24 @@ export default function Employees() {
                 {e.active ? 'Aktif' : 'Tidak aktif'}
               </span>
             </div>
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={() => openEdit(e)}
-                className="btn-press flex min-h-[48px] flex-1 items-center justify-center rounded-button bg-primary-soft/60 text-base font-bold text-primary-deep"
-              >
-                Ubah
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDelete(e.id, e.name)}
-                className="btn-press flex min-h-[48px] flex-1 items-center justify-center rounded-button bg-error/10 text-base font-bold text-error"
-              >
-                Hapus
-              </button>
-            </div>
+            {isAdmin ? (
+              <div className="mt-4 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => openEdit(e)}
+                  className="btn-press flex min-h-[48px] flex-1 items-center justify-center rounded-button bg-primary-soft/60 text-base font-bold text-primary-deep"
+                >
+                  Ubah
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(e.id, e.name)}
+                  className="btn-press flex min-h-[48px] flex-1 items-center justify-center rounded-button bg-error/10 text-base font-bold text-error"
+                >
+                  Hapus
+                </button>
+              </div>
+            ) : null}
           </article>
         ))}
       </div>

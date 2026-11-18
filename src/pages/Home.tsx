@@ -120,7 +120,6 @@ export default function Home() {
   const { user } = useAuth();
   const isStaff = user?.role === 'Staff';
   const isBos = user?.role === 'Bos';
-  const isAdmin = user?.role === 'Admin';
   // Karyawan yang terikat ke akun yang login (null = Bos, tidak absen).
   const myEmployeeId = user?.employeeId ?? null;
   const clock = useJakartaClock();
@@ -558,17 +557,15 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Jalan pintas ke Karyawan dan Laporan (untuk manager di HP,
-              yang tidak melihat sidebar). Karyawan hanya untuk Admin. */}
-          <div className={`entrance grid gap-3 md:hidden ${isAdmin ? 'grid-cols-2' : 'grid-cols-1'}`} style={{ animationDelay: '250ms' }}>
-            {isAdmin ? (
-              <Link
-                to="/karyawan"
-                className="btn-press flex min-h-[72px] items-center justify-center rounded-card border border-hairline bg-surface text-lg font-bold text-ink shadow-card"
-              >
-                Karyawan
-              </Link>
-            ) : null}
+          {/* Jalan pintas ke Karyawan dan Laporan (untuk manajemen di HP,
+              yang tidak melihat sidebar). */}
+          <div className="entrance grid grid-cols-2 gap-3 md:hidden" style={{ animationDelay: '250ms' }}>
+            <Link
+              to="/karyawan"
+              className="btn-press flex min-h-[72px] items-center justify-center rounded-card border border-hairline bg-surface text-lg font-bold text-ink shadow-card"
+            >
+              Karyawan
+            </Link>
             <Link
               to="/laporan"
               className="btn-press flex min-h-[72px] items-center justify-center rounded-card border border-hairline bg-surface text-lg font-bold text-ink shadow-card"
