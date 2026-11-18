@@ -1,6 +1,7 @@
 // Halaman Absensi.
-// - Staf: kartu bukti kerja (upload setelah absen masuk), form
-//   pengajuan Izin/Cuti, dan riwayat absennya sendiri.
+// - Staf: kartu bukti kerja (upload setelah absen masuk) dan riwayat
+//   absennya sendiri. Form pengajuan Izin/Cuti untuk semua akun yang
+//   terikat karyawan (Staff/Admin/Manager); Bos tidak mengajukan.
 // - Bos: antrean "Menunggu persetujuan" (absen + pengajuan Izin/Cuti)
 //   dengan tombol Setujui/Tolak, plus kartu per karyawan.
 // - Manager/Admin: melihat antrean dan statusnya saja, tanpa tombol
@@ -16,6 +17,7 @@ import { useAuth } from '../lib/auth';
 import { useAttendanceState } from '../lib/attendance-state';
 import { verificationKey } from '../lib/attendance-api';
 import {
+  canUploadEvidence,
   EMPLOYEES,
   formatDateID,
   jakartaDate,
@@ -165,6 +167,11 @@ export default function Attendance() {
   const { user } = useAuth();
   const isStaff = user?.role === 'Staff';
   const isBos = user?.role === 'Bos';
+  // Karyawan yang terikat ke akun yang login (null = Bos, tidak absen).
+  const myEmployeeId = user?.employeeId ?? null;
+  // ID untuk pencarian data "milik saya": -1 tidak pernah cocok dengan
+  // karyawan mana pun, jadi aman dipakai saat akun tidak terikat karyawan.
+  const myId = myEmployeeId ?? -1;
   const { records, requestLeave, setApproval, myCheckIn, evidenceByEmployee, verificationByRecord, addEvidence, removeEvidence, error: attendanceError, clearError, ensureMonth } = useAttendanceState();
   const [selectedDate, setSelectedDate] = useState(jakartaDate(0));
   const [lightbox, setLightbox] = useState<{ url: string; label: string } | null>(null);
@@ -177,19 +184,19 @@ export default function Attendance() {
     void ensureMonth(selectedDate.slice(0, 7));
   }, [selectedDate, ensureMonth]);
 
-  // Pengajuan Izin/Cuti (staf): tanggal + jenis. Pengajuan berstatus
-  // pending sampai Bos menyetujui atau menolak.
+  // Pengajuan Izin/Cuti (akun yang terikat karyawan): tanggal + jenis.
+  // Pengajuan berstatus pending sampai Bos menyetujui atau menolak.
   const [requestDate, setRequestDate] = useState(jakartaDate(0));
   const [requestType, setRequestType] = useState<'Izin' | 'Cuti'>('Izin');
 
   const dayRecords = useMemo(() => {
     const filtered = records.filter((r) => r.date === selectedDate);
     if (isStaff) {
-      // Staf hanya lihat riwayat sendiri (akun staf = Putra, id 1).
-      return filtered.filter((r) => r.employeeId === 1);
+      // Staf hanya lihat riwayat sendiri (lewat user.employeeId).
+      return filtered.filter((r) => r.employeeId === myId);
     }
     return filtered;
-  }, [records, selectedDate, isStaff]);
+  }, [records, selectedDate, isStaff, myId]);
 
   // Antrean persetujuan: semua catatan pending, semua tanggal.
   const pending = records.filter((r) => r.approval === 'pending');
@@ -203,7 +210,7 @@ export default function Attendance() {
   const monthApproved = records.filter((r) => r.date.startsWith(monthPrefix) && r.approval === 'approved');
   const monthPending = records.filter((r) => r.date.startsWith(monthPrefix) && r.approval === 'pending').length;
   const recap = useMemo(() => {
-    const list = isStaff ? EMPLOYEES.filter((e) => e.id === 1) : EMPLOYEES;
+    const list = isStaff ? EMPLOYEES.filter((e) => e.id === myId) : EMPLOYEES;
     return list.map((e) => {
       const mine = monthApproved.filter((r) => r.employeeId === e.id);
       return {
@@ -212,27 +219,30 @@ export default function Attendance() {
         izin: mine.filter((r) => r.status === 'Izin' || r.status === 'Cuti').length,
       };
     });
-  }, [monthApproved, isStaff]);
+  }, [monthApproved, isStaff, myId]);
 
   // Bukti kerja hari itu: berapa dari yang hadir (yang sudah
-  // disetujui) yang sudah melampirkan bukti di tanggal itu.
+  // disetujui) yang sudah melampirkan bukti di tanggal itu. Hanya
+  // karyawan yang bisa upload bukti yang dihitung (Admin/Manager
+  // tidak punya tombol upload, lihat canUploadEvidence).
   const presentToday = dayRecords.filter(
-    (r) => r.status === 'Hadir' && r.approval === 'approved',
+    (r) => r.status === 'Hadir' && r.approval === 'approved' && canUploadEvidence(r.employeeId),
   );
   const withEvidenceToday = presentToday.filter(
     (r) => (evidenceByEmployee[r.employeeId] ?? []).some((f) => f.date === selectedDate),
   ).length;
 
-  const myEvidence = (evidenceByEmployee[1] ?? []).filter((f) => f.date === jakartaDate(0));
+  const myEvidence = (evidenceByEmployee[myId] ?? []).filter((f) => f.date === jakartaDate(0));
 
   const handleRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    const existing = records.find((r) => r.employeeId === 1 && r.date === requestDate);
+    if (myEmployeeId === null) return;
+    const existing = records.find((r) => r.employeeId === myEmployeeId && r.date === requestDate);
     if (existing) {
       setNote(`Tanggal ${formatDateID(requestDate)} sudah ada catatan absen, tidak bisa mengajukan lagi.`);
       return;
     }
-    const ok = await requestLeave(1, requestDate, requestType);
+    const ok = await requestLeave(myEmployeeId, requestDate, requestType);
     if (ok) {
       setNote(
         `Pengajuan ${requestType} untuk ${formatDateID(requestDate)} terkirim, menunggu persetujuan Bos.`,
@@ -242,7 +252,8 @@ export default function Attendance() {
 
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const ok = await addEvidence(1, Array.from(files));
+    if (myEmployeeId === null) return;
+    const ok = await addEvidence(myEmployeeId, Array.from(files));
     if (ok) setNote(`${files.length} file bukti kerja ditambahkan.`);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -318,7 +329,7 @@ export default function Attendance() {
                       key={f.id}
                       file={f}
                       onView={() => viewFile(f)}
-                      onRemove={() => removeEvidence(1, f.id)}
+                      onRemove={() => removeEvidence(myId, f.id)}
                     />
                   ))}
                 </div>
@@ -332,8 +343,9 @@ export default function Attendance() {
         </div>
       ) : null}
 
-      {/* Form pengajuan Izin/Cuti (staf). */}
-      {isStaff ? (
+      {/* Form pengajuan Izin/Cuti (semua akun yang terikat karyawan:
+          Staff/Admin/Manager. Bos tidak mengajukan). */}
+      {myEmployeeId !== null ? (
         <form
           onSubmit={handleRequest}
           className="entrance mb-6 space-y-4 rounded-card border border-hairline bg-surface p-5 shadow-card"

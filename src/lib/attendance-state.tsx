@@ -8,9 +8,9 @@
 // persetujuan, pengajuan, bukti), bulan yang berubah dibaca ulang
 // dari server, jadi semua HP melihat data yang sama. Bos melihat
 // selfie karyawan dari HP-nya sendiri; Manager melihat laporan dari
-// HP-nya. localStorage hanya dipakai untuk status absen Admin dan
-// Manager (mereka belum ada di daftar karyawan, jadi absen mereka
-// tidak membuat catatan di server).
+// HP-nya. localStorage hanya dipakai sebagai jalur cadangan untuk
+// akun tanpa employeeId (Bos, yang tidak absen); praktis tidak
+// terpakai karena Bos tidak melihat tombol absen.
 //
 // Jam kerja fleksibel: tidak ada konsep Telat dan tidak ada jam
 // masuk tetap. Status absen hanya Hadir, Izin, atau Cuti.
@@ -52,13 +52,11 @@ interface AttendanceStateValue {
 
 const AttendanceStateContext = createContext<AttendanceStateValue | null>(null);
 
-// Akun staf (Putra) adalah satu-satunya akun yang terikat ke
-// karyawan di daftar absensi (id 1).
-const STAFF_EMPLOYEE_ID = 1;
-
-// --- Status absen Admin/Manager hari ini (tanpa catatan server). ---
-// Kunci per akun, supaya ganti akun di perangkat yang sama tidak
-// saling menukar status absen. Hanya berlaku untuk tanggal hari ini.
+// --- Status absen akun tanpa employeeId (Bos) hari ini. ---
+// Jalur cadangan di perangkat; praktis tidak terpakai karena Bos
+// tidak melihat tombol absen. Kunci per akun, supaya ganti akun di
+// perangkat yang sama tidak saling menukar status absen. Hanya
+// berlaku untuk tanggal hari ini.
 const CHECKIN_KEY_PREFIX = 'sabunpalem-absen-hari-ini';
 
 function checkInKeyFor(email: string | null | undefined): string | null {
@@ -103,7 +101,8 @@ function monthRange(monthKey: string): { from: string; to: string } {
 export function AttendanceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const userEmail = user?.email ?? null;
-  const isStaffAccount = user?.role === 'Staff';
+  // Karyawan yang terikat ke akun yang login (null = Bos, tidak absen).
+  const myEmployeeId = user?.employeeId ?? null;
 
   const [saved, setSaved] = useState<SavedCheckIn>(() => loadCheckIn(checkInKeyFor(userEmail)));
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
@@ -200,17 +199,17 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     }
   }, [refreshMonth]);
 
-  // Status absen saya hari ini. Staf membaca dari catatan server
-  // (catatan yang ditolak Bos tidak dihitung, jadi tombol absen
-  // aktif lagi untuk absen ulang). Admin/Manager membaca dari
-  // penyimpanan perangkat, karena absen mereka tidak membuat
-  // catatan di server.
+  // Status absen saya hari ini. Akun yang terikat karyawan (Staff,
+  // Admin, Manager) membaca dari catatan server (catatan yang
+  // ditolak Bos tidak dihitung, jadi tombol absen aktif lagi untuk
+  // absen ulang). Akun tanpa employeeId (Bos) membaca dari
+  // penyimpanan perangkat.
   const today = jakartaDate(0);
-  const myRecord = isStaffAccount
-    ? records.find((r) => r.employeeId === STAFF_EMPLOYEE_ID && r.date === today && r.approval !== 'rejected')
+  const myRecord = myEmployeeId !== null
+    ? records.find((r) => r.employeeId === myEmployeeId && r.date === today && r.approval !== 'rejected')
     : undefined;
-  const myCheckIn = isStaffAccount ? (myRecord?.checkIn ?? null) : saved.checkIn;
-  const myCheckOut = isStaffAccount ? (myRecord?.checkOut ?? null) : saved.checkOut;
+  const myCheckIn = myEmployeeId !== null ? (myRecord?.checkIn ?? null) : saved.checkIn;
+  const myCheckOut = myEmployeeId !== null ? (myRecord?.checkOut ?? null) : saved.checkOut;
   const myStatus: 'Hadir' | null = myCheckIn ? 'Hadir' : null;
 
   const requestLeave = useCallback(
@@ -243,8 +242,9 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     [refreshMonth],
   );
 
-  // Absen masuk. Staf: catat ke server (dengan selfie), lalu baca
-  // ulang bulan ini. Admin/Manager: hanya simpan di perangkat.
+  // Absen masuk. Akun yang terikat karyawan: catat ke server
+  // (dengan selfie), lalu baca ulang bulan ini. Tanpa employeeId
+  // (Bos): hanya simpan di perangkat.
   const checkIn = useCallback(
     async (v: CheckVerification, employeeId: number | null): Promise<boolean> => {
       const time = v.time || jakartaTime();

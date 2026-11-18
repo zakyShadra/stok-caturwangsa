@@ -11,6 +11,7 @@ import { useAuth } from '../lib/auth';
 import { useAttendanceState } from '../lib/attendance-state';
 import { useStock } from '../lib/store';
 import {
+  canUploadEvidence,
   EMPLOYEES,
   formatDateID,
   jakartaDate,
@@ -120,6 +121,8 @@ export default function Home() {
   const isStaff = user?.role === 'Staff';
   const isBos = user?.role === 'Bos';
   const isAdmin = user?.role === 'Admin';
+  // Karyawan yang terikat ke akun yang login (null = Bos, tidak absen).
+  const myEmployeeId = user?.employeeId ?? null;
   const clock = useJakartaClock();
   const today = jakartaDate(0);
 
@@ -163,28 +166,31 @@ export default function Home() {
   const employeeName = (id: number) => EMPLOYEES.find((e) => e.id === id)?.name ?? '-';
   const employeeDivision = (id: number) => EMPLOYEES.find((e) => e.id === id)?.division ?? '-';
 
-  // Rekap saya bulan ini (akun staf = Putra, id 1).
+  // Rekap saya bulan ini (akun yang login, lewat user.employeeId).
   // Hanya yang sudah disetujui yang dihitung; yang pending ditampilkan
   // terpisah di bawah rekap.
   const monthPrefix = today.slice(0, 7);
   const myMonth = records.filter(
-    (r) => r.employeeId === 1 && r.date.startsWith(monthPrefix) && r.approval === 'approved',
+    (r) => r.employeeId === myEmployeeId && r.date.startsWith(monthPrefix) && r.approval === 'approved',
   );
   const myPending = records.filter(
-    (r) => r.employeeId === 1 && r.date.startsWith(monthPrefix) && r.approval === 'pending',
+    (r) => r.employeeId === myEmployeeId && r.date.startsWith(monthPrefix) && r.approval === 'pending',
   ).length;
   const myHadir = myMonth.filter((r) => r.status === 'Hadir').length;
   const myIzin = myMonth.filter((r) => r.status === 'Izin' || r.status === 'Cuti').length;
 
   // Absen saya hari ini ditolak Bos? Tampilkan pemberitahuan supaya
-  // staf tahu harus absen ulang (tombol absen aktif lagi karena
+  // karyawan tahu harus absen ulang (tombol absen aktif lagi karena
   // status tersimpannya sudah dihapus saat penolakan).
   const myTodayRejected =
-    isStaff && todayRecords.some((r) => r.employeeId === 1 && r.approval === 'rejected');
+    myEmployeeId !== null &&
+    todayRecords.some((r) => r.employeeId === myEmployeeId && r.approval === 'rejected');
 
   // Bukti kerja hari ini: berapa dari yang hadir yang sudah melampirkan.
+  // Hanya karyawan yang bisa upload bukti yang dihitung (Admin/Manager
+  // tidak punya tombol upload, lihat canUploadEvidence).
   const presentIds = approvedToday
-    .filter((r) => r.status === 'Hadir')
+    .filter((r) => r.status === 'Hadir' && canUploadEvidence(r.employeeId))
     .map((r) => r.employeeId);
   const withEvidence = presentIds.filter((id) =>
     (evidenceByEmployee[id] ?? []).some((f) => f.date === today),
@@ -194,12 +200,13 @@ export default function Home() {
   const handleCheckOut = () => setFlow('pulang');
 
   // Flow selesai: catat absen dengan verifikasi (GPS + selfie).
-  // Akun staf = Putra (id 1), jadi catatannya masuk ke
-  // daftar absensi. Admin/Manager tidak ada di daftar karyawan.
+  // Akun yang terikat karyawan (Staff/Admin/Manager) catatannya
+  // masuk ke daftar absensi dan menunggu persetujuan Bos. Bos
+  // tidak terikat karyawan (employeeId null).
   // Flow hanya ditutup kalau penyimpanan berhasil; kalau gagal,
   // pesan error tampil di dalam flow dan pengguna bisa coba lagi.
   const handleFlowComplete = async (v: CheckVerification) => {
-    const employeeId = isStaff ? 1 : null;
+    const employeeId = myEmployeeId;
     const ok = flow === 'masuk'
       ? await checkIn(v, employeeId)
       : flow === 'pulang'
@@ -502,6 +509,11 @@ export default function Home() {
                   Anda belum absen masuk.
                 </p>
               )}
+              {myTodayRejected ? (
+                <p className="mt-3 rounded-button bg-error/10 px-4 py-3 text-base font-bold text-error">
+                  Absen Anda hari ini ditolak Bos. Silakan absen ulang.
+                </p>
+              ) : null}
               {checkInButtons}
             </div>
           ) : null}

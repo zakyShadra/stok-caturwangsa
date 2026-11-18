@@ -4,12 +4,14 @@
 //   dicatat dan ditampilkan, tapi tidak ada label Telat di mana pun.
 // - Matriks peran (keputusan Zaky, 18 Nov 2026, menggantikan aturan lama):
 //   Admin (Zaky): satu-satunya yang menambah/mengubah/menghapus karyawan.
-//     Baca semua, absen sendiri, scan stok. TIDAK menyetujui absensi.
+//     Baca semua, absen sendiri (catatan server, disetujui Bos seperti
+//     staf), ajukan Izin/Cuti, scan stok. TIDAK menyetujui absensi.
 //   Bos (Pak Yunus): menyetujui/menolak absensi + pengajuan Izin/Cuti.
 //     Melihat foto selfie absen + bukti kerja + laporan. TIDAK absen
 //     sendiri, TIDAK mengelola karyawan.
 //   Manager (Ibu Abe): hanya cek laporan tiap karyawan (read-only) +
-//     melihat absensi/foto/bukti kerja. Absen sendiri, scan stok.
+//     melihat absensi/foto/bukti kerja. Absen sendiri (catatan server,
+//     disetujui Bos), ajukan Izin/Cuti, scan stok.
 //     TIDAK mengelola karyawan, TIDAK menyetujui apa pun.
 //   Staff: absen masuk/pulang + selfie + upload bukti kerja + lihat
 //     riwayat sendiri + mengajukan Izin/Cuti. Scan stok. TIDAK bisa
@@ -30,6 +32,10 @@ export interface User {
   password: string;
   role: Role;
   name: string;
+  // Karyawan yang terikat ke akun ini (id di EMPLOYEES). Akun yang
+  // punya employeeId absennya tercatat di server dan disetujui Bos;
+  // null = akun tidak terikat karyawan (Bos tidak absen).
+  employeeId: number | null;
 }
 
 export interface Employee {
@@ -73,17 +79,21 @@ export interface EmployeeVerification {
 }
 
 export const USERS: User[] = [
-  { email: 'admin@sabunpalem.co.id', password: 'admin123', role: 'Admin', name: 'Zaky Shadra' },
-  { email: 'bos@sabunpalem.co.id', password: 'bos123', role: 'Bos', name: 'Pak Yunus' },
-  { email: 'manager@sabunpalem.co.id', password: 'manager123', role: 'Manager', name: 'Ibu Abe' },
-  { email: 'staff@sabunpalem.co.id', password: 'staff123', role: 'Staff', name: 'Putra' },
+  { email: 'admin@sabunpalem.co.id', password: 'admin123', role: 'Admin', name: 'Zaky Shadra', employeeId: 5 },
+  { email: 'bos@sabunpalem.co.id', password: 'bos123', role: 'Bos', name: 'Pak Yunus', employeeId: null },
+  { email: 'manager@sabunpalem.co.id', password: 'manager123', role: 'Manager', name: 'Ibu Abe', employeeId: 6 },
+  { email: 'staff@sabunpalem.co.id', password: 'staff123', role: 'Staff', name: 'Putra', employeeId: 1 },
 ];
 
 // Karyawan asli (Zaky, 18 Nov 2026): Putra, Dyas Nakata, Pak Andy.
 // Divisi/jabatan/HP mereka belum dikonfirmasi, jadi pakai placeholder
 // netral (Umum / Staff / kosong) sampai Zaky memberi datanya; jangan
 // dikarang. Maya Putri placeholder sampai Zaky memberi nama 4
-// karyawati, lalu diganti. ID 1 = akun staf yang bisa login (Putra).
+// karyawati, lalu diganti. Zaky Shadra (id 5) dan Ibu Abe (id 6)
+// adalah karyawan juga: absen mereka tercatat di server dan disetujui
+// Bos seperti staf (audit peran, 18 Nov 2026). Sebelumnya mereka
+// tidak ada di daftar ini, jadi absen mereka hanya tersimpan di
+// localStorage HP masing-masing dan tidak pernah terlihat Bos.
 // Catatan: D1 sudah kosong (record tes lama dihapus 18 Nov 2026),
 // jadi tidak ada data lama yang terikat ke ID karyawan ini.
 export const EMPLOYEES: Employee[] = [
@@ -91,7 +101,18 @@ export const EMPLOYEES: Employee[] = [
   { id: 2, name: 'Dyas Nakata', division: 'Umum', position: 'Staff', phone: '', active: true },
   { id: 3, name: 'Pak Andy', division: 'Umum', position: 'Staff', phone: '', active: true },
   { id: 4, name: 'Maya Putri', division: 'Admin', position: 'Staff Administrasi', phone: '0817-6789-0123', active: true },
+  { id: 5, name: 'Zaky Shadra', division: 'IT', position: 'Admin', phone: '', active: true },
+  { id: 6, name: 'Ibu Abe', division: 'Manajemen', position: 'Manager', phone: '', active: true },
 ];
+
+// Karyawan yang bisa melampirkan bukti kerja: hanya karyawan yang
+// punya akun Staff. Admin/Manager tidak punya tombol upload bukti,
+// jadi mereka tidak dihitung di penghitung bukti kerja ("X dari Y
+// yang hadir sudah melampirkan bukti"); kalau dihitung, angkanya
+// selalu terlihat kurang padahal mereka memang tidak bisa upload.
+export function canUploadEvidence(employeeId: number): boolean {
+  return USERS.some((u) => u.role === 'Staff' && u.employeeId === employeeId);
+}
 
 // Tidak ada batas jam masuk: jam kerja fleksibel (flex time), jadi
 // tidak ada status Telat dan tidak ada cutoff jam berapa pun.
