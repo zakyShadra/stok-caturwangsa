@@ -1,0 +1,7 @@
+# SPA fallback untuk Cloudflare Pages: semua path yang tidak cocok dengan
+# file statis diarahkan ke index.html (status 200), supaya refresh di
+# halaman dalam (/absensi, /stok, dst) tidak 404. GitHub Pages mengabaikan
+# file ini dan tetap memakai public/404.html.
+# Static assets tetap dilayani langsung; aturan ini hanya berlaku bila
+# tidak ada file yang cocok.
+/* /index.html 200
