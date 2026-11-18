@@ -12,10 +12,9 @@ import { useAttendanceState } from '../lib/attendance-state';
 import {
   EMPLOYEES,
   formatDateID,
-  getAttendance,
   jakartaDate,
 } from '../lib/attendance';
-import type { AttendanceStatus, EvidenceFile } from '../lib/attendance';
+import type { CheckVerification, EvidenceFile } from '../lib/attendance';
 import { AttendanceBadge, BigButton, EmptyState, PageHeader } from '../components/ui';
 
 // Satu file bukti: thumbnail kalau gambar (ketuk untuk memperbesar),
@@ -74,9 +73,8 @@ function EvidenceItem({
 export default function Attendance() {
   const { user } = useAuth();
   const isStaff = user?.role === 'Staff';
-  const { myCheckIn, evidenceByEmployee, addEvidence, removeEvidence } = useAttendanceState();
+  const { records, upsertRecord, myCheckIn, evidenceByEmployee, verificationByEmployee, addEvidence, removeEvidence } = useAttendanceState();
   const [selectedDate, setSelectedDate] = useState(jakartaDate(0));
-  const [records, setRecords] = useState(() => getAttendance());
   const [lightbox, setLightbox] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -124,19 +122,12 @@ export default function Attendance() {
   const myEvidence = evidenceByEmployee[1] ?? [];
 
   const handleMark = () => {
-    setRecords((prev) => {
-      const existing = prev.find((r) => r.employeeId === markEmployee && r.date === selectedDate);
-      if (existing) {
-        return prev.map((r) =>
-          r.employeeId === markEmployee && r.date === selectedDate
-            ? { ...r, status: markStatus as AttendanceStatus, checkIn: null, checkOut: null }
-            : r,
-        );
-      }
-      return [
-        ...prev,
-        { employeeId: markEmployee, date: selectedDate, checkIn: null, checkOut: null, status: markStatus as AttendanceStatus },
-      ];
+    upsertRecord({
+      employeeId: markEmployee,
+      date: selectedDate,
+      checkIn: null,
+      checkOut: null,
+      status: markStatus,
     });
     setMarkNote(`${employeeName(markEmployee)} ditandai ${markStatus} untuk ${formatDateID(selectedDate)}.`);
   };
@@ -345,6 +336,51 @@ export default function Attendance() {
                         ))}
                       </div>
                     )}
+                  </div>
+                ) : null}
+                {!isStaff ? (
+                  <div className="mt-3 border-t border-hairline pt-3">
+                    <p className="text-base font-bold text-ink">Selfie absen</p>
+                    {(() => {
+                      const v = verificationByEmployee[r.employeeId];
+                      const items: { label: string; data: CheckVerification }[] = [];
+                      if (v?.masuk) items.push({ label: 'Masuk', data: v.masuk });
+                      if (v?.pulang) items.push({ label: 'Pulang', data: v.pulang });
+                      if (items.length === 0) {
+                        return (
+                          <p className="mt-1 text-base text-ink-muted">
+                            Belum ada selfie absen.
+                          </p>
+                        );
+                      }
+                      return (
+                        <div className="mt-2 space-y-2">
+                          {items.map(({ label, data }) => (
+                            <div key={label} className="flex items-center gap-3 rounded-button border border-hairline bg-surface p-2">
+                              {data.selfieUrl ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setLightbox(data.selfieUrl)}
+                                  aria-label={`Lihat selfie ${label} ${employeeName(r.employeeId)}`}
+                                >
+                                  <img
+                                    src={data.selfieUrl}
+                                    alt={`Selfie ${label}`}
+                                    className="h-14 w-20 rounded-control object-cover"
+                                  />
+                                </button>
+                              ) : null}
+                              <div className="min-w-0 flex-1">
+                                <p className="text-base font-bold text-ink">
+                                  {label} {data.time} · {data.distanceMeters} m dari kantor
+                                </p>
+                                <p className="truncate text-sm text-ink-muted">{data.selfieName}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
                 ) : null}
               </article>

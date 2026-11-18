@@ -38,20 +38,21 @@ export default function App() {
           /stok-caturwangsa/, tanpa basename semua rute gagal cocok
           dan jatuh ke "*" -> "/". */}
       <BrowserRouter basename={import.meta.env.BASE_URL}>
-        <div className="min-h-screen bg-canvas font-sans text-ink">
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route
-              element={
-                <RequireAuth>
-                  <AttendanceProvider>
-                    <StockProvider>
+        {/* Provider di luar Routes supaya state absensi dan stok tidak
+            hilang saat pindah halaman, termasuk keluar lalu masuk lagi
+            sebagai akun lain (tanpa reload). */}
+        <AttendanceProvider>
+          <StockProvider>
+            <div className="min-h-screen bg-canvas font-sans text-ink">
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route
+                  element={
+                    <RequireAuth>
                       <Layout />
-                    </StockProvider>
-                  </AttendanceProvider>
-                </RequireAuth>
-              }
-            >
+                    </RequireAuth>
+                  }
+                >
               <Route index element={<Home />} />
               <Route path="absensi" element={<Attendance />} />
               <Route
@@ -76,7 +77,9 @@ export default function App() {
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-        </div>
+            </div>
+          </StockProvider>
+        </AttendanceProvider>
       </BrowserRouter>
     </AuthProvider>
   );

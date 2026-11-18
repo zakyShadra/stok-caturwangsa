@@ -179,8 +179,17 @@ Hadir hijau, Telat oranye, Izin/Cuti biru.
 3. **Absensi** - staf: kartu bukti kerja (upload setelah absen
    masuk) + pilih tanggal + kartu absen saya. Admin/Bos/Manager:
    pilih tanggal + hitungan bukti kerja + form tandai Izin/Cuti
-   + kartu per karyawan dengan bukti kerjanya. Rekap bulanan
-   di bawah.
+   + kartu per karyawan dengan bukti kerjanya dan selfie absen
+   (jam + jarak dari kantor, ketuk thumbnail untuk memperbesar).
+   Rekap bulanan di bawah.
+   **Flow absen (CheckInFlow):** overlay layar penuh, 2 langkah
+   bertahap. Langkah 1 cek lokasi GPS (radius 200 m dari kantor
+   Jl. Peta No. 71, Bandung; di luar radius ditolak tanpa jalan
+   pintas, izin ditolak tampil pesan + tombol Coba Lagi). Langkah
+   2 foto selfie kamera depan, preview dengan tombol "Ini Foto
+   Saya" / "Foto Ulang". Berlaku untuk Absen Masuk dan Absen
+   Pulang. Pesan error Bahasa Indonesia sederhana, tanpa istilah
+   teknis.
 4. **Karyawan** (Admin/Bos/Manager) - daftar karyawan, tambah/
    ubah/hapus.
 5. **Laporan** (Admin/Bos/Manager) - rentang tanggal, unduh CSV,

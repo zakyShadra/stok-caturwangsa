@@ -1,19 +1,37 @@
-// State absensi hari ini yang dipakai bersama Beranda dan halaman
-// Absensi: jam absen masuk/pulang saya, dan bukti kerja yang
-// dilampirkan tiap karyawan. Semua masih di memori (belum ada backend).
-// Nanti bukti kerja di-upload ke Workers + R2.
+// State absensi yang dipakai bersama Beranda, halaman Absensi, dan
+// Laporan: catatan absen, jam absen masuk/pulang saya, bukti kerja,
+// dan bukti verifikasi (lokasi GPS + selfie) tiap karyawan. Semua
+// masih di memori (belum ada backend): absen yang dicatat lewat
+// aplikasi hilang kalau halaman di-refresh, kecuali status absen
+// saya hari ini yang disimpan di localStorage. Nanti data ini
+// tinggal di Workers + D1, file di-upload ke R2.
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { LATE_CUTOFF, jakartaTime } from './attendance';
-import type { EvidenceFile } from './attendance';
+import {
+  LATE_CUTOFF,
+  OFFICE_LOCATION,
+  getAttendance,
+  haversineDistanceMeters,
+  jakartaDate,
+  jakartaTime,
+} from './attendance';
+import type { AttendanceRecord, CheckVerification, EvidenceFile } from './attendance';
+
+export interface EmployeeVerification {
+  masuk?: CheckVerification;
+  pulang?: CheckVerification;
+}
 
 interface AttendanceStateValue {
+  records: AttendanceRecord[];
+  upsertRecord: (rec: AttendanceRecord) => void;
   myCheckIn: string | null;
   myCheckOut: string | null;
   myStatus: 'Hadir' | 'Telat' | null;
-  checkIn: () => void;
-  checkOut: () => void;
+  checkIn: (v: CheckVerification, employeeId: number | null) => void;
+  checkOut: (v: CheckVerification, employeeId: number | null) => void;
   evidenceByEmployee: Record<number, EvidenceFile[]>;
+  verificationByEmployee: Record<number, EmployeeVerification>;
   addEvidence: (employeeId: number, files: File[]) => void;
   removeEvidence: (employeeId: number, fileId: string) => void;
 }
@@ -66,6 +84,25 @@ function seedEvidence(): Record<number, EvidenceFile[]> {
   };
 }
 
+// Verifikasi absen masuk yang sudah tercatat hari ini (Maya, 08:26).
+// Koordinatnya di dalam area pabrik, beberapa meter dari kantor.
+function seedVerification(): Record<number, EmployeeVerification> {
+  const lat = -6.93795;
+  const lon = 107.5992;
+  return {
+    2: {
+      masuk: {
+        lat,
+        lon,
+        distanceMeters: Math.round(haversineDistanceMeters(lat, lon, OFFICE_LOCATION.lat, OFFICE_LOCATION.lon)),
+        selfieUrl: makeThumb('selfie Maya Putri'),
+        selfieName: 'selfie-maya.jpg',
+        time: '08:26',
+      },
+    },
+  };
+}
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
@@ -91,9 +128,7 @@ function loadCheckIn(): SavedCheckIn {
     const raw = localStorage.getItem(CHECKIN_KEY);
     if (!raw) return empty;
     const parsed = JSON.parse(raw) as SavedCheckIn;
-    const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    if (parsed.date !== todayStr) return empty;
+    if (parsed.date !== jakartaDate(0)) return empty;
     return parsed;
   } catch {
     return empty;
@@ -110,33 +145,73 @@ function saveCheckIn(saved: SavedCheckIn) {
 
 export function AttendanceProvider({ children }: { children: ReactNode }) {
   const [saved, setSaved] = useState<SavedCheckIn>(loadCheckIn);
+  const [records, setRecords] = useState<AttendanceRecord[]>(() => getAttendance());
   const [evidenceByEmployee, setEvidenceByEmployee] = useState<Record<number, EvidenceFile[]>>(seedEvidence);
+  const [verificationByEmployee, setVerificationByEmployee] =
+    useState<Record<number, EmployeeVerification>>(seedVerification);
 
   const myCheckIn = saved.checkIn;
   const myCheckOut = saved.checkOut;
   const myStatus = saved.status;
 
-  const checkIn = useCallback(() => {
-    const time = jakartaTime();
-    const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const next: SavedCheckIn = {
-      date: todayStr,
-      checkIn: time,
-      checkOut: null,
-      status: time > LATE_CUTOFF ? 'Telat' : 'Hadir',
-    };
-    setSaved(next);
-    saveCheckIn(next);
-  }, []);
-
-  const checkOut = useCallback(() => {
-    setSaved((prev) => {
-      const next: SavedCheckIn = { ...prev, checkOut: jakartaTime() };
-      saveCheckIn(next);
-      return next;
+  const upsertRecord = useCallback((rec: AttendanceRecord) => {
+    setRecords((prev) => {
+      const exists = prev.some((r) => r.employeeId === rec.employeeId && r.date === rec.date);
+      if (exists) {
+        return prev.map((r) =>
+          r.employeeId === rec.employeeId && r.date === rec.date ? { ...r, ...rec } : r,
+        );
+      }
+      return [...prev, rec];
     });
   }, []);
+
+  // Absen masuk: catat jam + status, simpan verifikasi (GPS + selfie),
+  // dan tambahkan catatan ke daftar absensi (kalau employeeId ada).
+  // Admin/Manager tidak ada di daftar karyawan, jadi employeeId-nya
+  // null: jam absen mereka tetap tersimpan untuk akun mereka sendiri.
+  const checkIn = useCallback(
+    (v: CheckVerification, employeeId: number | null) => {
+      const time = jakartaTime();
+      const today = jakartaDate(0);
+      const status = time > LATE_CUTOFF ? 'Telat' : 'Hadir';
+      const next: SavedCheckIn = { date: today, checkIn: time, checkOut: null, status };
+      setSaved(next);
+      saveCheckIn(next);
+      if (employeeId !== null) {
+        upsertRecord({ employeeId, date: today, checkIn: time, checkOut: null, status });
+        setVerificationByEmployee((prev) => ({
+          ...prev,
+          [employeeId]: { ...(prev[employeeId] ?? {}), masuk: { ...v, time } },
+        }));
+      }
+    },
+    [upsertRecord],
+  );
+
+  const checkOut = useCallback(
+    (v: CheckVerification, employeeId: number | null) => {
+      const time = jakartaTime();
+      const today = jakartaDate(0);
+      setSaved((prev) => {
+        const next: SavedCheckIn = { ...prev, checkOut: time };
+        saveCheckIn(next);
+        return next;
+      });
+      if (employeeId !== null) {
+        setRecords((prev) =>
+          prev.map((r) =>
+            r.employeeId === employeeId && r.date === today ? { ...r, checkOut: time } : r,
+          ),
+        );
+        setVerificationByEmployee((prev) => ({
+          ...prev,
+          [employeeId]: { ...(prev[employeeId] ?? {}), pulang: { ...v, time } },
+        }));
+      }
+    },
+    [],
+  );
 
   const addEvidence = useCallback((employeeId: number, files: File[]) => {
     const next: EvidenceFile[] = files.map((f) => {
@@ -168,8 +243,32 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ myCheckIn, myCheckOut, myStatus, checkIn, checkOut, evidenceByEmployee, addEvidence, removeEvidence }),
-    [myCheckIn, myCheckOut, myStatus, checkIn, checkOut, evidenceByEmployee, addEvidence, removeEvidence],
+    () => ({
+      records,
+      upsertRecord,
+      myCheckIn,
+      myCheckOut,
+      myStatus,
+      checkIn,
+      checkOut,
+      evidenceByEmployee,
+      verificationByEmployee,
+      addEvidence,
+      removeEvidence,
+    }),
+    [
+      records,
+      upsertRecord,
+      myCheckIn,
+      myCheckOut,
+      myStatus,
+      checkIn,
+      checkOut,
+      evidenceByEmployee,
+      verificationByEmployee,
+      addEvidence,
+      removeEvidence,
+    ],
   );
 
   return <AttendanceStateContext.Provider value={value}>{children}</AttendanceStateContext.Provider>;
