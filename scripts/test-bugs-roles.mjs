@@ -104,7 +104,7 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
     return el ? el.textContent : '';
   });
   const budiTime = (statusText.match(/pukul (\d{2}:\d{2})/) ?? [])[1] ?? '';
-  check('mobile: status absen "Telat, pulang" tanpa spasi sebelum koma', /Telat, pulang/.test(statusText) && !/Telat\s+,/.test(statusText), statusText);
+  check('mobile: status absen "Hadir, pulang" tanpa spasi sebelum koma dan tanpa kata Telat', /Hadir, pulang/.test(statusText) && !/Hadir\s+,/.test(statusText) && !statusText.includes('Telat'), statusText);
 
   // Bukti kerja: lampirkan file, harus muncul di daftar.
   await page.goto(BASE + '/absensi', { waitUntil: 'networkidle' });
@@ -190,7 +190,21 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
   await page.waitForTimeout(800);
   const bosHome = await page.evaluate(() => document.body.textContent);
   check('mobile: Bos tidak punya kartu Absen saya', !bosHome.includes('Absen saya'));
-  check('mobile: rekap Telat jadi 2 setelah persetujuan (Maya + Budi)', bosHome.includes('Telat hari ini (2)'));
+  // Rekap hari ini (tanpa Telat): Budi sudah disetujui = Hadir 1,
+  // Maya belum absen = Belum absen 1.
+  const bosStats = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('div')].find((d) => d.textContent === 'Total karyawan');
+    const grid = label?.closest('.grid');
+    const out = {};
+    grid?.querySelectorAll(':scope > div').forEach((cell) => {
+      const n = cell.querySelector('div:first-child')?.textContent?.trim();
+      const l = cell.querySelector('div:last-child')?.textContent?.trim();
+      if (l && n) out[l] = n;
+    });
+    return out;
+  });
+  check('mobile: rekap Hadir 1, Belum absen 1 setelah persetujuan', bosStats.Hadir === '1' && bosStats['Belum absen'] === '1', JSON.stringify(bosStats));
+  check('mobile: tidak ada kata Telat di Beranda Bos', !bosHome.includes('Telat'));
   check('mobile: panel perhatian tidak lagi menampilkan Menunggu persetujuan', !bosHome.includes('Menunggu persetujuan:'));
 
   // Izin/Cuti: Budi mengajukan Cuti besok, Bos menolak.
@@ -229,7 +243,9 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
     const card = h?.closest('div');
     return [...(card?.querySelectorAll('.tabular-nums') ?? [])].map((n) => n.textContent);
   });
-  check('mobile: Laporan TOTAL Telat 2, Hadir 0, Izin 0, Total 2', totals.join(',') === '2,0,0,2', totals.join(','));
+  // TOTAL baru: Hadir, Izin/Cuti, Total (tanpa kolom Telat).
+  // Budi Hadir 1 (disetujui), Cuti ditolak tidak masuk hitungan.
+  check('mobile: Laporan TOTAL Hadir 1, Izin/Cuti 0, Total 1', totals.join(',') === '1,0,1', totals.join(','));
 
   // BUG 2 (kembali): data Budi utuh setelah ganti-ganti akun.
   await logout(page);

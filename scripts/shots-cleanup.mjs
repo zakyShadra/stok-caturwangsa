@@ -90,9 +90,9 @@ for (const vp of VIEWPORTS) {
   const homeText = await page.evaluate(() => document.body.innerText);
   if (!homeText.includes('Total karyawan')) errors.push(`${vp.name} home-manager: ringkasan tidak muncul`);
   if (!homeText.includes('Budi Santoso')) errors.push(`${vp.name} home-manager: Budi tidak muncul di Belum absen`);
-  if (!homeText.includes('Maya Putri')) errors.push(`${vp.name} home-manager: Maya tidak muncul di Telat`);
-  if (!homeText.includes('1 dari 1')) errors.push(`${vp.name} home-manager: hitungan bukti kerja bukan 1 dari 1`);
-  console.log(`${vp.name} home-manager: angka dicek (Budi belum absen, Maya telat, bukti 1 dari 1)`);
+  if (!homeText.includes('Maya Putri')) errors.push(`${vp.name} home-manager: Maya tidak muncul di Belum absen`);
+  if (!homeText.includes('0 dari 0')) errors.push(`${vp.name} home-manager: hitungan bukti kerja bukan 0 dari 0`);
+  console.log(`${vp.name} home-manager: angka dicek (Budi + Maya belum absen, bukti 0 dari 0)`);
   await shot(page, `${vp.name}-home-manager.png`);
 
   // Absensi manager: hanya 1 kartu (Maya)
@@ -103,7 +103,8 @@ for (const vp of VIEWPORTS) {
   console.log(`${vp.name} absensi-manager: ${cards} kartu absen + rekap`);
   await shot(page, `${vp.name}-absensi-manager.png`);
 
-  // Lightbox bukti kerja Maya
+  // Lightbox bukti kerja: tidak ada data awal, jadi thumbnail hanya
+  // dicek kalau ada (tidak error kalau tidak ada).
   const thumb = page.getByRole('button', { name: /Lihat foto-admin/ }).first();
   if (await thumb.count()) {
     await thumb.click();
@@ -112,7 +113,7 @@ for (const vp of VIEWPORTS) {
     await page.getByRole('button', { name: 'Tutup' }).click();
     await page.waitForTimeout(300);
   } else {
-    errors.push(`${vp.name}: thumbnail foto-admin tidak ditemukan`);
+    console.log(`${vp.name}: tidak ada thumbnail bukti kerja (wajar, belum ada data)`);
   }
 
   // Karyawan: hanya 2

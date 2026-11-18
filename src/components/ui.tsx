@@ -24,12 +24,11 @@ export function StatusBadge({ status }: { status: StockStatus }) {
 }
 
 // Badge status absensi: pola yang sama dengan StatusBadge (dot + label),
-// warnanya mengikuti arti statusnya: Hadir hijau, Telat oranye,
-// Izin/Cuti biru.
+// warnanya mengikuti arti statusnya: Hadir hijau, Izin/Cuti biru.
+// Tidak ada status Telat: jam kerja fleksibel.
 export function AttendanceBadge({ status }: { status: AttendanceStatus }) {
   const map: Record<AttendanceStatus, { dot: string; cls: string }> = {
     Hadir: { dot: 'bg-success', cls: 'bg-success/10 text-success-ink' },
-    Telat: { dot: 'bg-warning', cls: 'bg-warning/10 text-warning-ink' },
     Izin: { dot: 'bg-info', cls: 'bg-info/10 text-info-ink' },
     Cuti: { dot: 'bg-info', cls: 'bg-info/10 text-info-ink' },
   };

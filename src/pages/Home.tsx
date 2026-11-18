@@ -3,7 +3,7 @@
 //   di bawahnya 3 tombol raksasa stok (Barang Masuk, Barang Keluar,
 //   Lihat Stok), lalu rekap bulan ini.
 // - Admin/Bos/Manager: pertanyaan utama "Siapa yang belum absen?
-//   Siapa yang telat?" jadi hero, lalu angka ringkasan dan stok
+//   Siapa yang sudah masuk?" jadi hero, lalu angka ringkasan dan stok
 //   yang menipis. Bos tidak absen, dia hanya memantau.
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -12,7 +12,6 @@ import { useAttendanceState } from '../lib/attendance-state';
 import { useStock } from '../lib/store';
 import {
   EMPLOYEES,
-  LATE_CUTOFF,
   formatDateID,
   jakartaDate,
 } from '../lib/attendance';
@@ -151,8 +150,9 @@ export default function Home() {
 
   const totalKaryawan = EMPLOYEES.length;
   const hadir = approvedToday.filter((r) => r.status === 'Hadir').length;
-  const telatRecords = approvedToday.filter((r) => r.status === 'Telat');
-  const telat = telatRecords.length;
+  // Jam kerja fleksibel: tidak ada konsep Telat. Kolom kedua hero
+  // menampilkan siapa yang sudah absen masuk hari ini + jam masuknya.
+  const sudahAbsen = approvedToday.filter((r) => r.status === 'Hadir');
   const izin = approvedToday.filter((r) => r.status === 'Izin' || r.status === 'Cuti').length;
 
   const checkedInIds = new Set(
@@ -174,7 +174,6 @@ export default function Home() {
     (r) => r.employeeId === 1 && r.date.startsWith(monthPrefix) && r.approval === 'pending',
   ).length;
   const myHadir = myMonth.filter((r) => r.status === 'Hadir').length;
-  const myTelat = myMonth.filter((r) => r.status === 'Telat').length;
   const myIzin = myMonth.filter((r) => r.status === 'Izin' || r.status === 'Cuti').length;
 
   // Absen saya hari ini ditolak Bos? Tampilkan pemberitahuan supaya
@@ -185,7 +184,7 @@ export default function Home() {
 
   // Bukti kerja hari ini: berapa dari yang hadir yang sudah melampirkan.
   const presentIds = approvedToday
-    .filter((r) => r.status === 'Hadir' || r.status === 'Telat')
+    .filter((r) => r.status === 'Hadir')
     .map((r) => r.employeeId);
   const withEvidence = presentIds.filter((id) =>
     (evidenceByEmployee[id] ?? []).some((f) => f.date === today),
@@ -231,15 +230,12 @@ export default function Home() {
           tone="secondary"
         />
       </div>
-      <p className="mt-3 text-center text-base text-ink-subtle">
-        Masuk lewat pukul {LATE_CUTOFF} dihitung Telat.
-      </p>
     </>
   );
 
   // Baris status sengaja ditulis satu baris tanpa jeda antar ekspresi:
   // jeda baris di JSX sempat membuat spasi muncul sebelum koma
-  // ("Telat , pulang pukul ..."). Satu baris = koma menempel ke badge.
+  // ("Hadir , pulang pukul ..."). Satu baris = koma menempel ke badge.
   const myStatusLine = myCheckIn ? (
     <p className="mt-4 text-lg text-ink">
       Anda absen masuk pukul <span className="font-bold tabular-nums">{myCheckIn}</span>{myStatus ? <span className="ml-2"><AttendanceBadge status={myStatus} /></span> : null}{myCheckOut ? <span>, pulang pukul <span className="font-bold tabular-nums">{myCheckOut}</span></span> : null}
@@ -343,14 +339,10 @@ export default function Home() {
                 Lihat riwayat absensi saya
               </Link>
             </div>
-            <div className="mt-4 grid grid-cols-3 gap-3">
+            <div className="mt-4 grid grid-cols-2 gap-3">
               <div>
                 <div className="text-2xl font-bold text-success tabular-nums">{myHadir}</div>
                 <div className="mt-0.5 text-sm font-semibold text-ink-muted">Hadir</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-warning tabular-nums">{myTelat}</div>
-                <div className="mt-0.5 text-sm font-semibold text-ink-muted">Telat</div>
               </div>
               <div>
                 <div className="text-2xl font-bold text-info tabular-nums">{myIzin}</div>
@@ -393,11 +385,11 @@ export default function Home() {
         </div>
       ) : (
         <div className="space-y-6">
-          {/* HERO MANAGER: "Siapa yang belum absen? Siapa yang telat?" */}
+          {/* HERO MANAGER: "Siapa yang belum absen? Siapa yang sudah masuk?" */}
           <div className="entrance rounded-card border border-hairline bg-surface p-6 shadow-lift">
             <h2 className="text-xl font-bold text-ink">Perlu perhatian hari ini</h2>
             <p className="mt-1 text-base text-ink-muted">
-              Karyawan yang belum absen dan yang telat masuk hari ini.
+              Karyawan yang belum absen dan yang sudah masuk hari ini.
             </p>
             {attendanceError ? (
               <p className="mt-3 rounded-button bg-error/10 px-4 py-3 text-base font-bold text-error">
@@ -443,17 +435,17 @@ export default function Home() {
               </div>
               <div>
                 <p className="text-sm font-bold uppercase tracking-wide text-ink-muted">
-                  Telat hari ini ({telat})
+                  Sudah absen ({sudahAbsen.length})
                 </p>
-                {telatRecords.length === 0 ? (
-                  <p className="mt-3 text-base text-ink-muted">Tidak ada yang telat hari ini.</p>
+                {sudahAbsen.length === 0 ? (
+                  <p className="mt-3 text-base text-ink-muted">Belum ada yang absen hari ini.</p>
                 ) : (
                   <ul className="mt-2">
-                    {telatRecords.map((r) => (
+                    {sudahAbsen.map((r) => (
                       <li key={r.employeeId} className="flex flex-wrap items-center justify-between gap-2 border-b border-hairline py-2.5 last:border-0">
                         <span className="text-base font-bold text-ink">{employeeName(r.employeeId)}</span>
                         <span className="text-base text-ink-muted">
-                          masuk <span className="font-bold text-warning-ink tabular-nums">{r.checkIn ?? '-'}</span>
+                          masuk <span className="font-bold text-success-ink tabular-nums">{r.checkIn ?? '-'}</span>
                           {' · '}{employeeDivision(r.employeeId)}
                         </span>
                       </li>
@@ -478,12 +470,12 @@ export default function Home() {
                 <div className="mt-0.5 text-sm font-semibold text-ink-muted">Hadir</div>
               </div>
               <div>
-                <div className="text-2xl font-bold text-warning tabular-nums">{telat}</div>
-                <div className="mt-0.5 text-sm font-semibold text-ink-muted">Telat</div>
-              </div>
-              <div>
                 <div className="text-2xl font-bold text-info tabular-nums">{izin}</div>
                 <div className="mt-0.5 text-sm font-semibold text-ink-muted">Izin / Cuti</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-warning tabular-nums">{belumAbsen.length}</div>
+                <div className="mt-0.5 text-sm font-semibold text-ink-muted">Belum absen</div>
               </div>
             </div>
           </div>

@@ -1,5 +1,7 @@
 // Data dan logika absensi. Aturan yang dipakai:
-// - Masuk setelah pukul 08:15 dihitung Telat.
+// - Fleksibel (flex time): tidak ada konsep Telat dan tidak ada jam
+//   masuk tetap. Staf absen kapan saja, jam masuk dan pulang tetap
+//   dicatat dan ditampilkan, tapi tidak ada label Telat di mana pun.
 // - Matriks peran (keputusan Zaky, 18 Nov 2026, menggantikan aturan lama):
 //   Admin (Zaky): satu-satunya yang menambah/mengubah/menghapus karyawan.
 //     Baca semua, absen sendiri, scan stok. TIDAK menyetujui absensi.
@@ -20,7 +22,7 @@
 // Data karyawan dan akun di bawah ini adalah data awal yang dipakai
 // sampai backend jadi. Nanti data ini tinggal di database.
 export type Role = 'Admin' | 'Bos' | 'Manager' | 'Staff';
-export type AttendanceStatus = 'Hadir' | 'Telat' | 'Izin' | 'Cuti';
+export type AttendanceStatus = 'Hadir' | 'Izin' | 'Cuti';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
 
 export interface User {
@@ -82,8 +84,8 @@ export const EMPLOYEES: Employee[] = [
   { id: 2, name: 'Maya Putri', division: 'Admin', position: 'Staff Administrasi', phone: '0817-6789-0123', active: true },
 ];
 
-// Batas jam masuk: lewat dari ini dihitung Telat.
-export const LATE_CUTOFF = '08:15';
+// Tidak ada batas jam masuk: jam kerja fleksibel (flex time), jadi
+// tidak ada status Telat dan tidak ada cutoff jam berapa pun.
 
 // Lokasi kantor untuk verifikasi GPS saat absen.
 // Koordinat dari Jl. Peta No. 71, Situsaeur, Bojongloa Kidul,

@@ -209,7 +209,6 @@ export default function Attendance() {
       return {
         employee: e,
         hadir: mine.filter((r) => r.status === 'Hadir').length,
-        telat: mine.filter((r) => r.status === 'Telat').length,
         izin: mine.filter((r) => r.status === 'Izin' || r.status === 'Cuti').length,
       };
     });
@@ -218,7 +217,7 @@ export default function Attendance() {
   // Bukti kerja hari itu: berapa dari yang hadir (yang sudah
   // disetujui) yang sudah melampirkan bukti di tanggal itu.
   const presentToday = dayRecords.filter(
-    (r) => (r.status === 'Hadir' || r.status === 'Telat') && r.approval === 'approved',
+    (r) => r.status === 'Hadir' && r.approval === 'approved',
   );
   const withEvidenceToday = presentToday.filter(
     (r) => (evidenceByEmployee[r.employeeId] ?? []).some((f) => f.date === selectedDate),
@@ -599,14 +598,10 @@ export default function Attendance() {
           >
             <h3 className="text-lg font-bold text-ink">{r.employee.name}</h3>
             <p className="text-base text-ink-muted">{r.employee.division}</p>
-            <div className="mt-3 grid grid-cols-3 gap-2 border-t border-hairline pt-3 text-center">
+            <div className="mt-3 grid grid-cols-2 gap-2 border-t border-hairline pt-3 text-center">
               <div>
                 <div className="text-sm font-semibold text-ink-muted">Hadir</div>
                 <div className="text-2xl font-bold text-success tabular-nums">{r.hadir}</div>
-              </div>
-              <div>
-                <div className="text-sm font-semibold text-ink-muted">Telat</div>
-                <div className="text-2xl font-bold text-warning tabular-nums">{r.telat}</div>
               </div>
               <div>
                 <div className="text-sm font-semibold text-ink-muted">Izin / Cuti</div>

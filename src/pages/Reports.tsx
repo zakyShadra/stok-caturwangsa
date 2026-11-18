@@ -1,8 +1,8 @@
 // Halaman Laporan (Admin/Bos/Manager). Rekap kehadiran per periode,
-// diurutkan dari yang paling sering telat, supaya yang perlu ditegur
-// muncul duluan. Bisa diunduh sebagai CSV untuk dibuka di Excel.
-// Hanya catatan yang sudah disetujui Bos yang dihitung; yang pending
-// ditampilkan terpisah, yang ditolak tidak dihitung.
+// diurutkan dari yang paling sedikit hadir, supaya yang perlu
+// diperhatikan muncul duluan. Bisa diunduh sebagai CSV untuk dibuka
+// di Excel. Hanya catatan yang sudah disetujui Bos yang dihitung;
+// yang pending ditampilkan terpisah, yang ditolak tidak dihitung.
 import { useEffect, useMemo, useState } from 'react';
 import { EMPLOYEES, formatDateID, jakartaDate } from '../lib/attendance';
 import { useAttendanceState } from '../lib/attendance-state';
@@ -33,32 +33,30 @@ export default function Reports() {
         return {
           employee: e,
           hadir: approved.filter((r) => r.status === 'Hadir').length,
-          telat: approved.filter((r) => r.status === 'Telat').length,
           izin: approved.filter((r) => r.status === 'Izin' || r.status === 'Cuti').length,
           pending: mine.filter((r) => r.approval === 'pending').length,
           total: approved.length,
         };
-      }).sort((a, b) => b.telat - a.telat || b.izin - a.izin),
+      }).sort((a, b) => a.hadir - b.hadir || b.izin - a.izin),
     [filtered],
   );
 
   const totals = rows.reduce(
     (acc, r) => ({
       hadir: acc.hadir + r.hadir,
-      telat: acc.telat + r.telat,
       izin: acc.izin + r.izin,
       pending: acc.pending + r.pending,
       total: acc.total + r.total,
     }),
-    { hadir: 0, telat: 0, izin: 0, pending: 0, total: 0 },
+    { hadir: 0, izin: 0, pending: 0, total: 0 },
   );
 
   const downloadCSV = () => {
-    const header = 'Nama,Divisi,Hadir,Telat,Izin/Cuti,Menunggu Persetujuan,Total Hari';
+    const header = 'Nama,Divisi,Hadir,Izin/Cuti,Menunggu Persetujuan,Total Hari';
     const lines = rows.map(
-      (r) => `${r.employee.name},${r.employee.division},${r.hadir},${r.telat},${r.izin},${r.pending},${r.total}`,
+      (r) => `${r.employee.name},${r.employee.division},${r.hadir},${r.izin},${r.pending},${r.total}`,
     );
-    const csv = [header, ...lines, `TOTAL,,${totals.hadir},${totals.telat},${totals.izin},${totals.pending},${totals.total}`].join('\n');
+    const csv = [header, ...lines, `TOTAL,,${totals.hadir},${totals.izin},${totals.pending},${totals.total}`].join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -68,7 +66,6 @@ export default function Reports() {
     URL.revokeObjectURL(url);
   };
 
-  const telatPeople = rows.filter((r) => r.telat > 0).length;
   const inputCls =
     'min-h-[56px] w-full rounded-button border border-hairline bg-surface px-4 text-lg text-ink focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25';
 
@@ -117,9 +114,8 @@ export default function Reports() {
           Rekap {formatDateID(from)} sampai {formatDateID(to)}
         </p>
         <p className="mt-1 text-base text-ink-muted">
-          {telatPeople > 0
-            ? `${telatPeople} karyawan telat dalam periode ini, total ${totals.telat} kali telat dari ${totals.total} catatan absen yang sudah disetujui. Diurutkan dari yang paling sering telat.`
-            : `Tidak ada yang telat dalam periode ini (${totals.total} catatan absen yang sudah disetujui).`}
+          {totals.total} catatan absen yang sudah disetujui dalam periode ini: {totals.hadir} hadir
+          dan {totals.izin} izin/cuti. Diurutkan dari yang paling sedikit hadir.
         </p>
         {totals.pending > 0 ? (
           <p className="mt-2 text-base text-ink-muted">
@@ -130,7 +126,7 @@ export default function Reports() {
         ) : null}
       </div>
 
-      {/* Kartu per karyawan, diurutkan dari yang paling sering telat. */}
+      {/* Kartu per karyawan, diurutkan dari yang paling sedikit hadir. */}
       <div className="space-y-3">
         {rows.map((r, i) => (
           <article
@@ -140,13 +136,7 @@ export default function Reports() {
           >
             <h3 className="text-lg font-bold text-ink">{r.employee.name}</h3>
             <p className="text-base text-ink-muted">{r.employee.division}</p>
-            <div className="mt-3 grid grid-cols-4 gap-2 border-t border-hairline pt-3 text-center">
-              <div>
-                <div className="text-sm font-semibold text-ink-muted">Telat</div>
-                <div className={`text-2xl font-bold tabular-nums ${r.telat > 0 ? 'text-warning' : 'text-ink'}`}>
-                  {r.telat}
-                </div>
-              </div>
+            <div className="mt-3 grid grid-cols-3 gap-2 border-t border-hairline pt-3 text-center">
               <div>
                 <div className="text-sm font-semibold text-ink-muted">Hadir</div>
                 <div className="text-2xl font-bold text-success tabular-nums">{r.hadir}</div>
@@ -173,11 +163,7 @@ export default function Reports() {
       {/* Total keseluruhan. */}
       <div className="entrance mt-6 rounded-card border border-hairline bg-primary-soft/40 p-5 shadow-card">
         <h3 className="text-lg font-bold text-ink">TOTAL</h3>
-        <div className="mt-3 grid grid-cols-4 gap-2 text-center">
-          <div>
-            <div className="text-sm font-semibold text-ink-muted">Telat</div>
-            <div className="text-2xl font-bold text-warning tabular-nums">{totals.telat}</div>
-          </div>
+        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
           <div>
             <div className="text-sm font-semibold text-ink-muted">Hadir</div>
             <div className="text-2xl font-bold text-success tabular-nums">{totals.hadir}</div>
