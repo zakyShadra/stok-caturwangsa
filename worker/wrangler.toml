@@ -17,3 +17,12 @@ ALLOWED_ORIGINS = "https://zakyshadra.github.io,https://caturwangsa.ices.my.id,h
 # Kalau tab bulan itu sudah ada, tidak dibuat lagi.
 [triggers]
 crons = ["0 17 1 * *"]
+
+# Database absensi (D1): catatan absen + verifikasi selfie + bukti
+# kerja + foto (base64, sementara; lihat worker/schema.sql).
+# Dibuat: wrangler d1 create sabun-palem-absen
+# Skema: wrangler d1 execute sabun-palem-absen --remote --file=schema.sql
+[[d1_databases]]
+binding = "sabun_palem_absen"
+database_name = "sabun-palem-absen"
+database_id = "06dd5164-3722-47df-875f-807394e42aed"
