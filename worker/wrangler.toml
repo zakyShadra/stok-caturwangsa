@@ -10,7 +10,7 @@ compatibility_date = "2025-11-01"
 # Lihat scripts/setup-secrets.sh dan docs/migrasi-akun.md.
 [vars]
 SHEET_ID = "1SRXE0Ma1VXO_W1DJJ1GISM0Tmcnbr9w8eGyBrQj2IhA"
-ALLOWED_ORIGINS = "https://zakyshadra.github.io,https://caturwangsa.ices.my.id,http://localhost:5173"
+ALLOWED_ORIGINS = "https://zakyshadra.github.io,https://caturwangsa.ices.my.id,https://caturwangsa.pages.dev,http://localhost:5173"
 
 # Cron tiap tanggal 1 jam 00:00 WIB (17:00 UTC hari sebelumnya):
 # membuat tab bulanan baru di Sheet untuk bulan yang baru dimulai.
