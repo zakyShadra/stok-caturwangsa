@@ -84,15 +84,26 @@ memantau daftar hadir dan bukti kerja.
 
 ## Alur absensi
 
-1. Staf ketuk Absen Masuk di Beranda. Masuk setelah pukul 08:15
-   dihitung Telat.
-2. Setelah absen masuk, staf melampirkan bukti kerja hari ini
+1. Staf ketuk Absen Masuk di Beranda. Aplikasi cek lokasi GPS dulu:
+   jarak ke kantor dihitung dengan rumus Haversine, radius yang
+   diizinkan 200 meter. Di luar radius, absen ditolak ("Anda di luar
+   area pabrik. Absen hanya bisa dilakukan di area pabrik."), tanpa
+   jalan pintas. Koordinat kantor ada di `src/lib/attendance.ts`
+   (`OFFICE_LOCATION`): Jl. Peta No. 71, Bandung (-6.93789,
+   107.59914). Kalau dipakai di lokasi lain (misal HQ Tasikmalaya),
+   ubah angka di sana saja.
+2. Setelah GPS lolos, staf foto selfie lewat kamera depan (ketuk
+   "Ambil Foto Selfie"), dicek di preview, lalu ketuk "Ini Foto
+   Saya". Masuk setelah pukul 08:15 dihitung Telat.
+3. Setelah absen masuk, staf melampirkan bukti kerja hari ini
    di halaman Absensi (foto atau dokumen, bisa lebih dari satu).
-3. Bos dan Manager melihat daftar hadir + bukti kerja tiap
-   karyawan di halaman Absensi. Foto bisa diketuk untuk diperbesar.
-4. Manager/Admin menandai Izin/Cuti lewat form di halaman Absensi.
-5. Staf ketuk Absen Pulang saat selesai kerja.
-6. Laporan: pilih rentang tanggal, lihat rekap per karyawan
+4. Bos dan Manager melihat daftar hadir + bukti kerja + selfie
+   absen tiap karyawan di halaman Absensi. Selfie menampilkan jam
+   dan jarak dari kantor, foto bisa diketuk untuk diperbesar.
+5. Manager/Admin menandai Izin/Cuti lewat form di halaman Absensi.
+6. Staf ketuk Absen Pulang saat selesai kerja (verifikasi GPS +
+   selfie yang sama berlaku untuk pulang).
+7. Laporan: pilih rentang tanggal, lihat rekap per karyawan
    (Telat/Hadir/Izin/Total, urut dari yang paling sering telat),
    unduh CSV untuk Excel.
 
@@ -140,15 +151,22 @@ src/
     store.tsx         State global stok (React Context)
     beep.ts           Bunyi beep + getar saat scan berhasil
     attendance.ts     Tipe + data absensi (Role, User, Employee,
-                      AttendanceRecord, EvidenceFile), batas telat
-                      08:15, helper tanggal/waktu WIB
+                      AttendanceRecord, EvidenceFile, CheckVerification),
+                      batas telat 08:15, lokasi kantor + radius geofence
+                      200 m, rumus jarak Haversine, helper tanggal/waktu WIB
     auth.tsx          Auth (React Context), login/logout,
                       tersimpan di localStorage
-    attendance-state.tsx  State absensi (React Context): absen
-                      masuk/pulang (tersimpan di localStorage
-                      per hari) + bukti kerja per karyawan
+    attendance-state.tsx  State absensi (React Context): catatan absen
+                      dipakai bersama Beranda/Absensi/Laporan, absen
+                      masuk/pulang (tersimpan di localStorage per hari),
+                      bukti kerja + verifikasi (GPS + selfie) per karyawan.
+                      Provider dipasang di luar Routes supaya tidak hilang
+                      saat keluar/masuk akun lain.
   components/
     ui.tsx            Tombol besar, badge status, stepper, pilih lokasi
+    CheckInFlow.tsx   Flow absen: langkah 1 cek lokasi GPS, langkah 2
+                      foto selfie (kamera depan lewat input capture).
+                      Overlay layar penuh via Portal.
     Layout.tsx        Sidebar desktop (grup UTAMA/ABSENSI/STOK,
                       pill berjalan) + wrapper konten
     BottomNav.tsx     Navigasi bawah HP, 4 item, pill berjalan

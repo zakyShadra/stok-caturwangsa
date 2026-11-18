@@ -2,13 +2,14 @@
 // diurutkan dari yang paling sering telat, supaya yang perlu ditegur
 // muncul duluan. Bisa diunduh sebagai CSV untuk dibuka di Excel.
 import { useMemo, useState } from 'react';
-import { EMPLOYEES, formatDateID, getAttendance, jakartaDate } from '../lib/attendance';
+import { EMPLOYEES, formatDateID, jakartaDate } from '../lib/attendance';
+import { useAttendanceState } from '../lib/attendance-state';
 import { BigButton, PageHeader } from '../components/ui';
 
 export default function Reports() {
   const [from, setFrom] = useState(jakartaDate(0));
   const [to, setTo] = useState(jakartaDate(0));
-  const records = useMemo(() => getAttendance(), []);
+  const { records } = useAttendanceState();
 
   const filtered = useMemo(
     () => records.filter((r) => r.date >= from && r.date <= to),

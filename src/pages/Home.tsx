@@ -5,7 +5,7 @@
 // - Admin/Bos/Manager: pertanyaan utama "Siapa yang belum absen?
 //   Siapa yang telat?" jadi hero, lalu angka ringkasan dan stok
 //   yang menipis. Bos tidak absen, dia hanya memantau.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { useAttendanceState } from '../lib/attendance-state';
@@ -14,10 +14,11 @@ import {
   EMPLOYEES,
   LATE_CUTOFF,
   formatDateID,
-  getAttendance,
   jakartaDate,
 } from '../lib/attendance';
+import type { CheckVerification } from '../lib/attendance';
 import { AttendanceBadge, BigButton } from '../components/ui';
+import CheckInFlow from '../components/CheckInFlow';
 import { stockStatus, totalStock } from '../lib/types';
 
 function useJakartaClock() {
@@ -124,14 +125,18 @@ export default function Home() {
 
   // Status absen saya hari ini, dipakai bersama halaman Absensi
   // (supaya tombol upload bukti kerja tahu saya sudah absen).
-  const { myCheckIn, myCheckOut, myStatus, checkIn, checkOut, evidenceByEmployee } = useAttendanceState();
+  // records dipakai bersama: absen yang dicatat lewat aplikasi
+  // langsung muncul di angka beranda dan daftar absensi.
+  const { records, myCheckIn, myCheckOut, myStatus, checkIn, checkOut, evidenceByEmployee } = useAttendanceState();
+
+  // Flow absen (cek lokasi GPS lalu foto selfie). null = tidak jalan.
+  const [flow, setFlow] = useState<'masuk' | 'pulang' | null>(null);
 
   const { products, loading } = useStock();
   const menipisList = products.filter((p) => stockStatus(p) === 'menipis');
   const habisCount = products.filter((p) => stockStatus(p) === 'habis').length;
   const totalUnits = products.reduce((sum, p) => sum + totalStock(p), 0);
 
-  const records = useMemo(() => getAttendance(), []);
   const todayRecords = records.filter((r) => r.date === today);
 
   const totalKaryawan = EMPLOYEES.length;
@@ -159,8 +164,18 @@ export default function Home() {
     .map((r) => r.employeeId);
   const withEvidence = presentIds.filter((id) => (evidenceByEmployee[id] ?? []).length > 0).length;
 
-  const handleCheckIn = () => checkIn();
-  const handleCheckOut = () => checkOut();
+  const handleCheckIn = () => setFlow('masuk');
+  const handleCheckOut = () => setFlow('pulang');
+
+  // Flow selesai: catat absen dengan verifikasi (GPS + selfie).
+  // Akun staf = Budi Santoso (id 1), jadi catatannya masuk ke
+  // daftar absensi. Admin/Manager tidak ada di daftar karyawan.
+  const handleFlowComplete = (v: CheckVerification) => {
+    const employeeId = isStaff ? 1 : null;
+    if (flow === 'masuk') checkIn(v, employeeId);
+    else if (flow === 'pulang') checkOut(v, employeeId);
+    setFlow(null);
+  };
 
   const checkInButtons = (
     <>
@@ -480,6 +495,11 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* Flow absen: cek lokasi GPS, lalu foto selfie. */}
+      {flow ? (
+        <CheckInFlow type={flow} onComplete={handleFlowComplete} onCancel={() => setFlow(null)} />
+      ) : null}
     </div>
   );
 }
