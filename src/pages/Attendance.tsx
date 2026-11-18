@@ -1,7 +1,7 @@
 // Halaman Absensi.
 // - Staf: kartu bukti kerja (upload setelah absen masuk) dan riwayat
-//   absennya sendiri. Form pengajuan Izin/Cuti untuk semua akun yang
-//   terikat karyawan (Staff/Admin/Manager); Bos tidak mengajukan.
+//   absennya sendiri. Form pengajuan Izin/Cuti untuk Staff/Admin saja;
+//   Bos dan Manager tidak mengajukan (tidak punya absensi).
 // - Bos: antrean "Menunggu persetujuan" (absen + pengajuan Izin/Cuti)
 //   dengan tombol Setujui/Tolak, plus kartu per karyawan.
 // - Manager/Admin: melihat antrean dan statusnya saja, tanpa tombol
@@ -178,7 +178,7 @@ export default function Attendance() {
   const isStaff = user?.role === 'Staff';
   const isBos = user?.role === 'Bos';
   const isManager = user?.role === 'Manager';
-  // Karyawan yang terikat ke akun yang login (null = Bos, tidak absen).
+  // Karyawan yang terikat ke akun yang login (null = Bos/Manager, tidak absen).
   const myEmployeeId = user?.employeeId ?? null;
   // ID untuk pencarian data "milik saya": -1 tidak pernah cocok dengan
   // karyawan mana pun, jadi aman dipakai saat akun tidak terikat karyawan.
@@ -354,8 +354,8 @@ export default function Attendance() {
         </div>
       ) : null}
 
-      {/* Form pengajuan Izin/Cuti (semua akun yang terikat karyawan:
-          Staff/Admin/Manager. Bos tidak mengajukan). */}
+      {/* Form pengajuan Izin/Cuti (Staff/Admin saja. Bos dan Manager
+          tidak mengajukan: mereka tidak punya absensi). */}
       {myEmployeeId !== null ? (
         <form
           onSubmit={handleRequest}

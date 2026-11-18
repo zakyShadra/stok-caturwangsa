@@ -9,8 +9,8 @@
 // dari server, jadi semua HP melihat data yang sama. Bos melihat
 // selfie karyawan dari HP-nya sendiri; Manager melihat laporan dari
 // HP-nya. localStorage hanya dipakai sebagai jalur cadangan untuk
-// akun tanpa employeeId (Bos, yang tidak absen); praktis tidak
-// terpakai karena Bos tidak melihat tombol absen.
+// akun tanpa employeeId (Bos dan Manager, yang tidak absen); praktis
+// tidak terpakai karena mereka tidak melihat tombol absen.
 //
 // Jam kerja fleksibel: tidak ada konsep Telat dan tidak ada jam
 // masuk tetap. Status absen hanya Hadir, Izin, atau Cuti.
@@ -57,8 +57,8 @@ interface AttendanceStateValue {
 
 const AttendanceStateContext = createContext<AttendanceStateValue | null>(null);
 
-// --- Status absen akun tanpa employeeId (Bos) hari ini. ---
-// Jalur cadangan di perangkat; praktis tidak terpakai karena Bos
+// --- Status absen akun tanpa employeeId (Bos/Manager) hari ini. ---
+// Jalur cadangan di perangkat; praktis tidak terpakai karena mereka
 // tidak melihat tombol absen. Kunci per akun, supaya ganti akun di
 // perangkat yang sama tidak saling menukar status absen. Hanya
 // berlaku untuk tanggal hari ini.
@@ -107,7 +107,8 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const userEmail = user?.email ?? null;
   const userName = user?.name ?? 'Manager';
-  // Karyawan yang terikat ke akun yang login (null = Bos, tidak absen).
+  // Karyawan yang terikat ke akun yang login (null = Bos/Manager,
+  // tidak absen).
   const myEmployeeId = user?.employeeId ?? null;
 
   const [saved, setSaved] = useState<SavedCheckIn>(() => loadCheckIn(checkInKeyFor(userEmail)));
@@ -216,10 +217,10 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
   }, [refreshMonth]);
 
   // Status absen saya hari ini. Akun yang terikat karyawan (Staff,
-  // Admin, Manager) membaca dari catatan server (catatan yang
-  // ditolak Bos tidak dihitung, jadi tombol absen aktif lagi untuk
-  // absen ulang). Akun tanpa employeeId (Bos) membaca dari
-  // penyimpanan perangkat.
+  // Admin) membaca dari catatan server (catatan yang ditolak Bos
+  // tidak dihitung, jadi tombol absen aktif lagi untuk absen ulang).
+  // Akun tanpa employeeId (Bos/Manager) membaca dari penyimpanan
+  // perangkat.
   const today = jakartaDate(0);
   const myRecord = myEmployeeId !== null
     ? records.find((r) => r.employeeId === myEmployeeId && r.date === today && r.approval !== 'rejected')
@@ -260,7 +261,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
 
   // Absen masuk. Akun yang terikat karyawan: catat ke server
   // (dengan selfie), lalu baca ulang bulan ini. Tanpa employeeId
-  // (Bos): hanya simpan di perangkat.
+  // (Bos/Manager): hanya simpan di perangkat.
   const checkIn = useCallback(
     async (v: CheckVerification, employeeId: number | null): Promise<boolean> => {
       const time = v.time || jakartaTime();

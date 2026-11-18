@@ -4,7 +4,7 @@
 //   Lihat Stok), lalu rekap bulan ini.
 // - Admin/Bos/Manager: pertanyaan utama "Siapa yang belum absen?
 //   Siapa yang sudah masuk?" jadi hero, lalu angka ringkasan dan stok
-//   yang menipis. Bos tidak absen, dia hanya memantau.
+//   yang menipis. Bos dan Manager tidak absen, mereka hanya memantau.
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
@@ -120,7 +120,8 @@ export default function Home() {
   const { user } = useAuth();
   const isStaff = user?.role === 'Staff';
   const isBos = user?.role === 'Bos';
-  // Karyawan yang terikat ke akun yang login (null = Bos, tidak absen).
+  const isManager = user?.role === 'Manager';
+  // Karyawan yang terikat ke akun yang login (null = Bos/Manager, tidak absen).
   const myEmployeeId = user?.employeeId ?? null;
   const clock = useJakartaClock();
   const today = jakartaDate(0);
@@ -199,9 +200,9 @@ export default function Home() {
   const handleCheckOut = () => setFlow('pulang');
 
   // Flow selesai: catat absen dengan verifikasi (GPS + selfie).
-  // Akun yang terikat karyawan (Staff/Admin/Manager) catatannya
+  // Akun yang terikat karyawan (Staff/Admin) catatannya
   // masuk ke daftar absensi dan menunggu persetujuan Bos. Bos
-  // tidak terikat karyawan (employeeId null).
+  // dan Manager tidak terikat karyawan (employeeId null).
   // Flow hanya ditutup kalau penyimpanan berhasil; kalau gagal,
   // pesan error tampil di dalam flow dan pengguna bisa coba lagi.
   const handleFlowComplete = async (v: CheckVerification) => {
@@ -486,10 +487,10 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Absen saya: admin dan manager juga karyawan, tapi
-              posisinya sekunder. Bos tidak absen, jadi kartu ini
-              tidak tampil untuk Bos. */}
-          {!isBos ? (
+          {/* Absen saya: Admin juga karyawan (posisinya sekunder di sini;
+              Staf punya hero sendiri). Bos dan Manager tidak absen,
+              jadi kartu ini tidak tampil untuk mereka. */}
+          {!isBos && !isManager ? (
             <div className="entrance rounded-card border border-hairline bg-surface p-5 shadow-card" style={{ animationDelay: '100ms' }}>
               <h2 className="text-lg font-bold text-ink">Absen saya</h2>
               {/* Jam dan status di baris terpisah: satu baris gabungan
