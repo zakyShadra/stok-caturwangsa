@@ -128,7 +128,7 @@ export default function Home() {
   // (supaya tombol upload bukti kerja tahu saya sudah absen).
   // records dipakai bersama: absen yang dicatat lewat aplikasi
   // langsung muncul di angka beranda dan daftar absensi.
-  const { records, myCheckIn, myCheckOut, myStatus, checkIn, checkOut, evidenceByEmployee } = useAttendanceState();
+  const { records, myCheckIn, myCheckOut, myStatus, checkIn, checkOut, evidenceByEmployee, error: attendanceError, clearError } = useAttendanceState();
 
   // Flow absen (cek lokasi GPS lalu foto selfie). null = tidak jalan.
   const [flow, setFlow] = useState<'masuk' | 'pulang' | null>(null);
@@ -183,11 +183,13 @@ export default function Home() {
   const myTodayRejected =
     isStaff && todayRecords.some((r) => r.employeeId === 1 && r.approval === 'rejected');
 
-  // Bukti kerja: berapa dari yang hadir hari ini yang sudah melampirkan.
+  // Bukti kerja hari ini: berapa dari yang hadir yang sudah melampirkan.
   const presentIds = approvedToday
     .filter((r) => r.status === 'Hadir' || r.status === 'Telat')
     .map((r) => r.employeeId);
-  const withEvidence = presentIds.filter((id) => (evidenceByEmployee[id] ?? []).length > 0).length;
+  const withEvidence = presentIds.filter((id) =>
+    (evidenceByEmployee[id] ?? []).some((f) => f.date === today),
+  ).length;
 
   const handleCheckIn = () => setFlow('masuk');
   const handleCheckOut = () => setFlow('pulang');
@@ -195,11 +197,16 @@ export default function Home() {
   // Flow selesai: catat absen dengan verifikasi (GPS + selfie).
   // Akun staf = Budi Santoso (id 1), jadi catatannya masuk ke
   // daftar absensi. Admin/Manager tidak ada di daftar karyawan.
-  const handleFlowComplete = (v: CheckVerification) => {
+  // Flow hanya ditutup kalau penyimpanan berhasil; kalau gagal,
+  // pesan error tampil di dalam flow dan pengguna bisa coba lagi.
+  const handleFlowComplete = async (v: CheckVerification) => {
     const employeeId = isStaff ? 1 : null;
-    if (flow === 'masuk') checkIn(v, employeeId);
-    else if (flow === 'pulang') checkOut(v, employeeId);
-    setFlow(null);
+    const ok = flow === 'masuk'
+      ? await checkIn(v, employeeId)
+      : flow === 'pulang'
+        ? await checkOut(v, employeeId)
+        : false;
+    if (ok) setFlow(null);
   };
 
   const checkInButtons = (
@@ -258,6 +265,14 @@ export default function Home() {
             <h2 className="text-xl font-bold text-ink">Absen saya hari ini</h2>
             <p className="mt-3 text-5xl font-bold tracking-wide text-primary-deep tabular-nums">{clock}</p>
             <p className="mt-2 text-base text-ink-muted">Waktu Indonesia Barat (WIB)</p>
+            {attendanceError ? (
+              <p className="mt-4 rounded-button bg-error/10 px-4 py-3 text-base font-bold text-error">
+                {attendanceError}{' '}
+                <button type="button" onClick={clearError} className="underline">
+                  Tutup
+                </button>
+              </p>
+            ) : null}
             {myTodayRejected ? (
               <p className="mt-4 rounded-button bg-error/10 px-4 py-3 text-base font-bold text-error">
                 Absen Anda hari ini ditolak Bos. Silakan absen ulang.
@@ -384,6 +399,14 @@ export default function Home() {
             <p className="mt-1 text-base text-ink-muted">
               Karyawan yang belum absen dan yang telat masuk hari ini.
             </p>
+            {attendanceError ? (
+              <p className="mt-3 rounded-button bg-error/10 px-4 py-3 text-base font-bold text-error">
+                {attendanceError}{' '}
+                <button type="button" onClick={clearError} className="underline">
+                  Tutup
+                </button>
+              </p>
+            ) : null}
             <p className="mt-3 rounded-button bg-surface-soft px-4 py-3 text-base text-ink">
               Bukti kerja: <span className="font-bold text-primary-deep tabular-nums">{withEvidence} dari {presentIds.length}</span> yang
               hadir sudah melampirkan bukti.

@@ -10,10 +10,11 @@
 // Foto selfie absen (jam + jarak dari kantor) bisa diketuk untuk
 // diperbesar lewat lightbox.
 import { createPortal } from 'react-dom';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { useAttendanceState } from '../lib/attendance-state';
+import { verificationKey } from '../lib/attendance-api';
 import {
   EMPLOYEES,
   formatDateID,
@@ -164,11 +165,17 @@ export default function Attendance() {
   const { user } = useAuth();
   const isStaff = user?.role === 'Staff';
   const isBos = user?.role === 'Bos';
-  const { records, upsertRecord, setApproval, myCheckIn, evidenceByEmployee, verificationByEmployee, addEvidence, removeEvidence } = useAttendanceState();
+  const { records, requestLeave, setApproval, myCheckIn, evidenceByEmployee, verificationByRecord, addEvidence, removeEvidence, error: attendanceError, clearError, ensureMonth } = useAttendanceState();
   const [selectedDate, setSelectedDate] = useState(jakartaDate(0));
   const [lightbox, setLightbox] = useState<{ url: string; label: string } | null>(null);
   const [note, setNote] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Pindah bulan = muat bulan itu dari server (catatan + selfie +
+  // bukti), supaya tanggal lama menampilkan data yang benar.
+  useEffect(() => {
+    void ensureMonth(selectedDate.slice(0, 7));
+  }, [selectedDate, ensureMonth]);
 
   // Pengajuan Izin/Cuti (staf): tanggal + jenis. Pengajuan berstatus
   // pending sampai Bos menyetujui atau menolak.
@@ -208,41 +215,36 @@ export default function Attendance() {
     });
   }, [monthApproved, isStaff]);
 
-  // Bukti kerja hari ini: berapa dari yang hadir (yang sudah
-  // disetujui) yang sudah melampirkan.
+  // Bukti kerja hari itu: berapa dari yang hadir (yang sudah
+  // disetujui) yang sudah melampirkan bukti di tanggal itu.
   const presentToday = dayRecords.filter(
     (r) => (r.status === 'Hadir' || r.status === 'Telat') && r.approval === 'approved',
   );
   const withEvidenceToday = presentToday.filter(
-    (r) => (evidenceByEmployee[r.employeeId] ?? []).length > 0,
+    (r) => (evidenceByEmployee[r.employeeId] ?? []).some((f) => f.date === selectedDate),
   ).length;
 
-  const myEvidence = evidenceByEmployee[1] ?? [];
+  const myEvidence = (evidenceByEmployee[1] ?? []).filter((f) => f.date === jakartaDate(0));
 
-  const handleRequest = (e: React.FormEvent) => {
+  const handleRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     const existing = records.find((r) => r.employeeId === 1 && r.date === requestDate);
     if (existing) {
       setNote(`Tanggal ${formatDateID(requestDate)} sudah ada catatan absen, tidak bisa mengajukan lagi.`);
       return;
     }
-    upsertRecord({
-      employeeId: 1,
-      date: requestDate,
-      checkIn: null,
-      checkOut: null,
-      status: requestType,
-      approval: 'pending',
-    });
-    setNote(
-      `Pengajuan ${requestType} untuk ${formatDateID(requestDate)} terkirim, menunggu persetujuan Bos.`,
-    );
+    const ok = await requestLeave(1, requestDate, requestType);
+    if (ok) {
+      setNote(
+        `Pengajuan ${requestType} untuk ${formatDateID(requestDate)} terkirim, menunggu persetujuan Bos.`,
+      );
+    }
   };
 
-  const handleFiles = (files: FileList | null) => {
+  const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    addEvidence(1, Array.from(files));
-    setNote(`${files.length} file bukti kerja ditambahkan.`);
+    const ok = await addEvidence(1, Array.from(files));
+    if (ok) setNote(`${files.length} file bukti kerja ditambahkan.`);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -267,6 +269,15 @@ export default function Attendance() {
       {note ? (
         <p className="mb-6 rounded-button bg-primary-soft/60 px-4 py-3 text-base font-bold text-primary-deep">
           {note}
+        </p>
+      ) : null}
+
+      {attendanceError ? (
+        <p className="mb-6 rounded-button bg-error/10 px-4 py-3 text-base font-bold text-error">
+          {attendanceError}{' '}
+          <button type="button" onClick={clearError} className="underline">
+            Tutup
+          </button>
         </p>
       ) : null}
 
@@ -375,7 +386,7 @@ export default function Attendance() {
           </p>
           <div className="mt-4 space-y-3">
             {pending.map((r) => {
-              const v = verificationByEmployee[r.employeeId]?.masuk;
+              const v = verificationByRecord[verificationKey(r.employeeId, r.date)]?.masuk;
               const isLeave = r.status === 'Izin' || r.status === 'Cuti';
               return (
                 <article
@@ -411,14 +422,14 @@ export default function Attendance() {
                     <div className="mt-4 flex gap-2">
                       <button
                         type="button"
-                        onClick={() => setApproval(r.employeeId, r.date, 'approved')}
+                        onClick={() => void setApproval(r.employeeId, r.date, 'approved')}
                         className="btn-press flex min-h-[48px] flex-1 items-center justify-center rounded-button bg-success text-base font-bold text-white"
                       >
                         Setujui
                       </button>
                       <button
                         type="button"
-                        onClick={() => setApproval(r.employeeId, r.date, 'rejected')}
+                        onClick={() => void setApproval(r.employeeId, r.date, 'rejected')}
                         className="btn-press flex min-h-[48px] flex-1 items-center justify-center rounded-button bg-error text-base font-bold text-white"
                       >
                         Tolak
@@ -464,7 +475,7 @@ export default function Attendance() {
       ) : (
         <div className="space-y-3">
           {dayRecords.map((r, i) => {
-            const evidence = evidenceByEmployee[r.employeeId] ?? [];
+            const evidence = (evidenceByEmployee[r.employeeId] ?? []).filter((f) => f.date === selectedDate);
             const isLeave = r.status === 'Izin' || r.status === 'Cuti';
             return (
               <article
@@ -520,7 +531,7 @@ export default function Attendance() {
                   <div className="mt-3 border-t border-hairline pt-3">
                     <p className="text-base font-bold text-ink">Selfie absen</p>
                     {(() => {
-                      const v = verificationByEmployee[r.employeeId];
+                      const v = verificationByRecord[verificationKey(r.employeeId, r.date)];
                       const items: { label: string; data: CheckVerification }[] = [];
                       if (v?.masuk) items.push({ label: 'Masuk', data: v.masuk });
                       if (v?.pulang) items.push({ label: 'Pulang', data: v.pulang });
@@ -551,14 +562,14 @@ export default function Attendance() {
                   <div className="mt-4 flex gap-2">
                     <button
                       type="button"
-                      onClick={() => setApproval(r.employeeId, r.date, 'approved')}
+                      onClick={() => void setApproval(r.employeeId, r.date, 'approved')}
                       className="btn-press flex min-h-[48px] flex-1 items-center justify-center rounded-button bg-success text-base font-bold text-white"
                     >
                       Setujui
                     </button>
                     <button
                       type="button"
-                      onClick={() => setApproval(r.employeeId, r.date, 'rejected')}
+                      onClick={() => void setApproval(r.employeeId, r.date, 'rejected')}
                       className="btn-press flex min-h-[48px] flex-1 items-center justify-center rounded-button bg-error text-base font-bold text-white"
                     >
                       Tolak

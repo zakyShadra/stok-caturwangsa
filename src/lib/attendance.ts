@@ -58,6 +58,16 @@ export interface EvidenceFile {
   kind: 'image' | 'doc';
   sizeLabel: string;
   url: string | null;
+  date?: string; // YYYY-MM-DD, tanggal bukti dilampirkan
+}
+
+// Verifikasi absen satu karyawan untuk satu hari: bukti masuk dan
+// bukti pulang (GPS + selfie). Selfie di sini berupa URL yang
+// dilayani Worker (/api/absen/foto/:key) kalau datanya dari server,
+// atau data URL kalau datanya lokal (mode dev tanpa backend).
+export interface EmployeeVerification {
+  masuk?: CheckVerification;
+  pulang?: CheckVerification;
 }
 
 export const USERS: User[] = [
@@ -150,14 +160,9 @@ export function jakartaTime(): string {
   return `${String(jakarta.getHours()).padStart(2, '0')}:${String(jakarta.getMinutes()).padStart(2, '0')}`;
 }
 
-// Absensi hari ini saja. Maya sudah absen (telat, masuk 08:26),
-// dan absensinya sudah disetujui supaya rekap tidak kosong.
-// Budi belum absen, jadi dia muncul di "Belum absen" sampai dia
-// absen masuk sendiri. Entri baru ditambahkan saat karyawan absen
-// lewat aplikasi (status pending, menunggu persetujuan Bos), atau
-// saat staf mengajukan Izin/Cuti.
+// Absensi dimulai dari kosong: tidak ada catatan awal. Entri baru
+// ditambahkan saat karyawan absen lewat aplikasi (status pending,
+// menunggu persetujuan Bos), atau saat staf mengajukan Izin/Cuti.
 export function getAttendance(): AttendanceRecord[] {
-  return [
-    { employeeId: 2, date: jakartaDate(0), checkIn: '08:26', checkOut: null, status: 'Telat', approval: 'approved' },
-  ];
+  return [];
 }
