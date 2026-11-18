@@ -114,7 +114,11 @@ export function BigButton({ tone = 'primary', full = false, className = '', ...p
 }
 
 // Stepper jumlah: tombol + dan - besar, tanpa perlu mengetik angka.
-export function QtyStepper({ value, onChange, unit }: { value: number; onChange: (v: number) => void; unit: string }) {
+// Stepper jumlah: tombol - dan + 64x64px, angka tengah 32px tabular.
+// max (opsional) membatasi tombol +: dipakai di scan Keluar, supaya
+// jumlah tidak bisa melebihi stok di lokasi yang dipilih.
+export function QtyStepper({ value, onChange, unit, max }: { value: number; onChange: (v: number) => void; unit: string; max?: number }) {
+  const atMax = max !== undefined && value >= max;
   return (
     <div className="flex items-center justify-center gap-4">
       <button
@@ -133,7 +137,8 @@ export function QtyStepper({ value, onChange, unit }: { value: number; onChange:
         type="button"
         aria-label="Tambah jumlah"
         onClick={() => onChange(value + 1)}
-        className="btn-press flex h-16 w-16 items-center justify-center rounded-button bg-primary text-3xl font-bold text-white shadow-card"
+        disabled={atMax}
+        className="btn-press flex h-16 w-16 items-center justify-center rounded-button bg-primary text-3xl font-bold text-white shadow-card disabled:opacity-40"
       >
         +
       </button>
