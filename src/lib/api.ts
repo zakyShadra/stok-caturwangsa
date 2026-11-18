@@ -6,8 +6,8 @@
 // Komponen lain tidak perlu tahu sumbernya; bentuk fungsinya sama.
 //
 // Endpoint Workers:
-//   POST /api/scan       -> catat satu pergerakan (append ke Sheet Log)
-//   POST /api/scan/undo  -> batalkan transaksi (baris koreksi di Log)
+//   POST /api/scan       -> catat satu pergerakan (sisip di baris 2 Log)
+//   POST /api/scan/undo  -> batalkan transaksi (baris koreksi di baris 2 Log)
 //   GET  /api/stock      -> daftar produk + stok terkini (baca Sheet Stok)
 //   GET  /api/log        -> riwayat transaksi (baca Sheet Log)
 //   GET  /api/monthly    -> stok akhir tiap produk per tanggal (?month=YYYY-MM)
@@ -183,8 +183,8 @@ const localApi = {
   },
 
   // Undo transaksi terakhir (untuk tombol Batalkan di layar sukses).
-  // Versi jarak jauh append baris koreksi ke Sheet Log, bukan hapus
-  // baris lama (audit trail tetap utuh). Versi lokal menghapus dari
+  // Versi jarak jauh menyisipkan baris koreksi di baris 2 Sheet Log,
+  // bukan hapus baris lama (audit trail tetap utuh). Versi lokal menghapus dari
   // memori karena tidak ada sheet yang perlu dijaga.
   async undoLast(txId: string): Promise<void> {
     await delay(150);

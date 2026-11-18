@@ -1,14 +1,16 @@
 // Backend stok Sabun Palem. Web app memanggil endpoint ini; Worker
 // membaca dan menulis Google Sheet. Prinsip utama: Worker HANYA
-// MENAMBAH baris ke tab Log Transaksi, tidak pernah menimpa nilai stok.
-// Stok terkini dihitung rumus SUMIFS di Sheet dari log, jadi dua scan
-// bersamaan tidak bisa saling menimpa (tidak ada race condition) dan
-// semua perubahan tercatat (audit trail).
+// MENYISIPKAN baris baru di bawah header tab Log Transaksi (baris 2),
+// tidak pernah menimpa nilai stok dan tidak pernah menghapus baris.
+// Baris terbaru selalu paling atas. Stok terkini dihitung rumus
+// SUMIFS di Sheet dari log, jadi dua scan bersamaan tidak bisa saling
+// menimpa (tidak ada race condition) dan semua perubahan tercatat
+// (audit trail).
 //
 // Endpoint:
 //   GET  /api/stock       -> daftar produk + stok terkini
 //   GET  /api/log         -> riwayat transaksi, terbaru di atas
-//   POST /api/scan        -> catat satu pergerakan (append ke Log)
+//   POST /api/scan        -> catat satu pergerakan (sisip di baris 2 Log)
 //   POST /api/scan/undo   -> batalkan satu transaksi (baris koreksi)
 //   GET  /api/monthly     -> stok akhir tiap produk per tanggal (?month=YYYY-MM)
 //   POST /api/monthly/create -> buat tab bulanan di Sheet ({month: YYYY-MM})
@@ -17,7 +19,7 @@
 // (lihat wrangler.toml [triggers]).
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { appendRows, readRange, rowNumberFromRange } from './sheets';
+import { insertRowAtTop, readRange } from './sheets';
 import type { SheetsEnv } from './sheets';
 import {
   computeMonthly,
@@ -39,7 +41,6 @@ interface Env extends SheetsEnv {
 }
 
 const STOCK_RANGE = "'Stok Terkini'!A2:I25";
-const LOG_RANGE = "'Log Transaksi'!A:H";
 const LOG_READ_RANGE = "'Log Transaksi'!A2:I";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -91,7 +92,6 @@ app.get('/api/stock', async (c) => {
 });
 
 interface LogRow {
-  row: number;
   timestamp: string;
   barcode: string;
   name: string;
@@ -118,11 +118,10 @@ function tanggalFromTimestamp(iso: string): string {
 
 function parseLogRows(rows: string[][]): LogRow[] {
   return rows
-    .map((r, i) => {
+    .map((r) => {
       const timestamp = r[0] ?? '';
       const tanggalRaw = r[8] ?? '';
       return {
-        row: i + 2,
         timestamp,
         barcode: r[1] ?? '',
         name: r[2] ?? '',
@@ -145,15 +144,40 @@ function toMonthlyRows(rows: LogRow[]): MonthlyLogRow[] {
     .map((r) => ({ name: r.name, type: r.type, qty: r.qty, tanggal: r.tanggal }));
 }
 
-// GET /api/log: riwayat terbaru di atas. Kolom Sisa dihitung dengan
-// berjalan dari baris terlama: karena Log berisi baris Stok Awal,
-// total berjalan per produk adalah stok setelah tiap transaksi.
+// ID transaksi berbasis ISI baris, bukan nomor baris: nomor baris
+// bergeser setiap ada sisipan baru di atas, jadi tidak bisa dipakai
+// sebagai identitas. Format:
+//   TX-<timestamp ISO>|<barcode>|<Masuk|Keluar>|<qty>
+// Kombinasi ini unik dalam praktik: dua scan produk, jenis, dan jumlah
+// yang sama tidak terjadi dalam milidetik yang sama.
+function txIdFor(r: Pick<LogRow, 'timestamp' | 'barcode' | 'type' | 'qty'>): string {
+  return `TX-${r.timestamp}|${r.barcode}|${r.type}|${r.qty}`;
+}
+
+function parseTxId(txId: string): Pick<LogRow, 'timestamp' | 'barcode' | 'type' | 'qty'> | null {
+  if (!txId.startsWith('TX-')) return null;
+  const parts = txId.slice(3).split('|');
+  if (parts.length !== 4) return null;
+  const [timestamp, barcode, type, qtyRaw] = parts;
+  if (Number.isNaN(Date.parse(timestamp))) return null;
+  if (type !== 'Masuk' && type !== 'Keluar') return null;
+  const qty = Number(qtyRaw);
+  if (!Number.isInteger(qty) || qty <= 0) return null;
+  return { timestamp, barcode, type, qty };
+}
+
+// GET /api/log: riwayat terbaru di atas. Sheet menyimpan log dengan
+// baris terbaru di atas, tapi kolom Sisa harus dihitung berjalan dari
+// baris TERLAMA: array dibalik dulu sebelum menghitung, lalu dibalik
+// lagi untuk tampilan. Karena Log berisi baris Stok Awal, total
+// berjalan per produk adalah stok setelah tiap transaksi.
 app.get('/api/log', async (c) => {
   try {
     const rows = await readRange(c.env, LOG_READ_RANGE);
     const parsed = parseLogRows(rows);
+    const oldestFirst = [...parsed].reverse();
     const running = new Map<string, number>();
-    const withStockAfter = parsed.map((r) => {
+    const withStockAfter = oldestFirst.map((r) => {
       const current = running.get(r.name) ?? 0;
       const next = current + (r.type === 'Masuk' ? r.qty : -r.qty);
       running.set(r.name, next);
@@ -165,7 +189,7 @@ app.get('/api/log', async (c) => {
       .map((r) => {
         const catalog = findByName(r.name);
         return {
-          id: `TX-${r.row}`,
+          id: txIdFor(r),
           timestamp: r.timestamp,
           productId: catalog?.id ?? r.name,
           type: r.type === 'Masuk' ? 'masuk' : 'keluar',
@@ -193,8 +217,9 @@ interface ScanBody {
   staff?: unknown;
 }
 
-// POST /api/scan: validasi server-side, lalu append satu baris ke Log.
-// Validasi tidak pernah dipercayakan ke aplikasi saja.
+// POST /api/scan: validasi server-side, lalu sisipkan satu baris di
+// bawah header Log (baris 2). Validasi tidak pernah dipercayakan ke
+// aplikasi saja.
 app.post('/api/scan', async (c) => {
   let body: ScanBody;
   try {
@@ -254,17 +279,17 @@ app.post('/api/scan', async (c) => {
 
   try {
     const timestamp = new Date().toISOString();
-    const updatedRange = await appendRows(c.env, LOG_RANGE, [[
+    const sheetType = body.type === 'masuk' ? 'Masuk' : 'Keluar';
+    await insertRowAtTop(c.env, [[
       timestamp,
       product.barcode ?? '',
       product.name,
       LOCATION_LABELS[body.location],
-      body.type === 'masuk' ? 'Masuk' : 'Keluar',
+      sheetType,
       body.qty,
       body.note.trim(),
       body.staff.trim(),
-    ]]);
-    const rowNumber = rowNumberFromRange(updatedRange);
+    ]], wibToday());
 
     // Baca ulang stok produk ini supaya aplikasi menampilkan angka baru.
     const stockRows = await readRange(c.env, STOCK_RANGE);
@@ -285,7 +310,7 @@ app.post('/api/scan', async (c) => {
         stock,
       },
       tx: {
-        id: rowNumber ? `TX-${rowNumber}` : `TX-${Date.now()}`,
+        id: txIdFor({ timestamp, barcode: product.barcode ?? '', type: sheetType, qty: body.qty }),
         timestamp,
         productId: product.id,
         type: body.type,
@@ -302,9 +327,12 @@ app.post('/api/scan', async (c) => {
   }
 });
 
-// POST /api/scan/undo: batalkan transaksi dengan menambah baris koreksi
-// (jenis berlawanan, jumlah sama). Baris asli TIDAK dihapus, audit
-// trail tetap utuh. Baris Stok Awal dan baris koreksi tidak bisa dibatalkan.
+// POST /api/scan/undo: batalkan transaksi dengan menyisipkan baris
+// koreksi di baris 2 (jenis berlawanan, jumlah sama). Baris asli TIDAK
+// dihapus, audit trail tetap utuh. Baris Stok Awal dan baris koreksi
+// tidak bisa dibatalkan. Baris target dicari dari ISI baris (timestamp
+// + barcode + jenis + jumlah), bukan nomor baris, karena nomor baris
+// bergeser setiap ada sisipan baru di atas.
 app.post('/api/scan/undo', async (c) => {
   let body: { txId?: unknown; staff?: unknown };
   try {
@@ -312,28 +340,26 @@ app.post('/api/scan/undo', async (c) => {
   } catch {
     return jsonError(c, 400, 'Isi request bukan JSON yang benar');
   }
-  if (typeof body.txId !== 'string' || !/^TX-\d+$/.test(body.txId)) {
+  if (typeof body.txId !== 'string') {
     return jsonError(c, 400, 'txId tidak benar');
   }
-  const rowNumber = Number(body.txId.slice(3));
+  const key = parseTxId(body.txId);
+  if (!key) {
+    return jsonError(c, 400, 'txId tidak benar');
+  }
   try {
-    const rows = await readRange(c.env, `'Log Transaksi'!A${rowNumber}:H${rowNumber}`);
-    const r = rows[0];
-    if (!r || !r[2] || (r[4] !== 'Masuk' && r[4] !== 'Keluar')) {
+    const rows = await readRange(c.env, LOG_READ_RANGE);
+    const parsed = parseLogRows(rows);
+    const original = parsed.find(
+      (r) =>
+        r.timestamp === key.timestamp &&
+        r.barcode === key.barcode &&
+        r.type === key.type &&
+        r.qty === key.qty,
+    );
+    if (!original) {
       return jsonError(c, 404, 'Transaksi tidak ditemukan');
     }
-    const original: LogRow = {
-      row: rowNumber,
-      timestamp: r[0] ?? '',
-      barcode: r[1] ?? '',
-      name: r[2] ?? '',
-      location: r[3] ?? '',
-      type: r[4] ?? '',
-      qty: Number(r[5] ?? 0),
-      note: r[6] ?? '',
-      staff: r[7] ?? '',
-      tanggal: tanggalFromTimestamp(r[0] ?? ''),
-    };
     if (original.note === 'Stok Awal') {
       return jsonError(c, 400, 'Stok awal tidak bisa dibatalkan');
     }
@@ -344,7 +370,7 @@ app.post('/api/scan/undo', async (c) => {
       typeof body.staff === 'string' && body.staff.trim() !== ''
         ? body.staff.trim()
         : original.staff;
-    await appendRows(c.env, LOG_RANGE, [[
+    await insertRowAtTop(c.env, [[
       new Date().toISOString(),
       original.barcode,
       original.name,
@@ -353,7 +379,7 @@ app.post('/api/scan/undo', async (c) => {
       original.qty,
       `Koreksi: batal ${original.note}`,
       staff,
-    ]]);
+    ]], wibToday());
     return c.json({ ok: true });
   } catch (e) {
     console.error('POST /api/scan/undo gagal:', e instanceof Error ? e.message : e);

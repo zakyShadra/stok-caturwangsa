@@ -205,6 +205,8 @@ Hadir hijau, Telat oranye, Izin/Cuti biru.
    Habis, ketuk untuk detail (stok per lokasi, pergerakan terakhir).
 9. **Riwayat** - log transaksi, filter Masuk/Keluar/Semua, kolom
    mirip kartu kertas: Tanggal, Keterangan, Masuk, Keluar, Sisa.
+   Tampilan kedua "Per Hari": stok akhir tiap produk per tanggal
+   dalam sebulan, dengan selisih harian.
 
 ## Do's and Don'ts
 
@@ -228,3 +230,10 @@ Hadir hijau, Telat oranye, Izin/Cuti biru.
   ke baris terpisah (keterangan, lalu lokasi dan petugas).
 - Do: nama produk tidak pernah dipotong dengan truncate. Kartu stok
   dua baris (nama sampai 2 baris + angka, lalu barcode + badge).
+- Do: tabel bulanan di Riwayat (Per Hari) geser horizontal dengan
+  scroll-snap: kolom tanggal dikelompokkan per panel, satu panel
+  adalah satu titik snap (3 kolom di HP, 4 kolom di layar lebar).
+  Panel HARUS muat dalam lebar area geser, kalau tidak snap
+  berhenti di tengah panel. Kolom nama produk di luar area geser
+  supaya selalu kelihatan. Tanggal yang belum lewat tampil "-",
+  bukan 0, supaya tidak dikira stoknya habis.

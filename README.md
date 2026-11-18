@@ -12,10 +12,13 @@ karyawan dan stok barang gudang, dalam satu tempat.
 Semua barang keluar lewat gudang, jadi satu scan di sini mencatat
 semua penjualan, online maupun offline.
 
-> Status: UI selesai. Backend (Cloudflare Workers + Google Sheets
-> + R2 untuk bukti kerja) belum dibangun. Data saat ini disimpan
-> di memori, hilang kalau halaman di-refresh, kecuali status absen
-> hari ini yang disimpan di localStorage dan direset keesokan hari.
+> Status: UI selesai. Backend stok LIVE: Cloudflare Workers
+> (https://stok-sabun-palem.zakyshadra.workers.dev) + Google Sheet
+> clone "SO Detail - COPY DEV". Scan barang masuk/keluar tersimpan
+> di tab Log Transaksi (baris terbaru di atas) dan stok dihitung
+> rumus SUMIFS di tab Stok Terkini. Bukti kerja masih disimpan di
+> memori (upload R2 belum dibangun), status absen hari ini disimpan
+> di localStorage dan direset keesokan hari.
 
 ## Cara jalanin
 
@@ -124,7 +127,7 @@ Bomber Matic, Jelly Cream 140gr, Jelly Pink Toples.
 
 ## Data
 
-Produk dan stok awal diambil dari tab RESUME sheet "SO Detail"
+Produk dan stok awal diambil dari tab info_produk sheet "SO Detail"
 perusahaan (24 produk, 20 sudah punya barcode EAN-13). Pembagian
 stok per lokasi mengikuti pola tab Agustus 2026 (sebagian besar
 di Gudang Klinik). Riwayat awal dibuat dari keterangan yang ada
@@ -202,8 +205,6 @@ Ringkasan:
 
 ## Yang belum ada (nanti)
 
-- Backend Workers + Google Sheets (append log, formula SUMIFS).
-  Struktur `lib/api.ts` sudah disiapkan untuk itu.
 - Upload bukti kerja ke Workers + R2 (saat ini file hanya
   di memori, hilang kalau halaman di-refresh).
 - Auth asli: Cloudflare Access dengan allowlist Gmail (tanpa PIN).
