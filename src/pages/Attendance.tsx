@@ -223,7 +223,7 @@ export default function Attendance() {
           <>
             <p className="mt-3 rounded-button bg-surface-soft px-4 py-3 text-base text-ink">
               Bukti kerja: <span className="font-bold text-primary-deep tabular-nums">{withEvidenceToday} dari {presentToday.length}</span> yang
-              hadir sudah melampirkan bukti hari ini.
+              hadir sudah melampirkan bukti.
             </p>
             <div className="mt-4">
               <BigButton tone="secondary" full onClick={() => setShowMark((v) => !v)}>
@@ -291,7 +291,7 @@ export default function Attendance() {
       {dayRecords.length === 0 ? (
         <EmptyState
           title="Belum ada data absen"
-          body="Belum ada yang absen untuk tanggal ini."
+          body="Tidak ada absen di tanggal ini."
         />
       ) : (
         <div className="space-y-3">
@@ -313,11 +313,15 @@ export default function Attendance() {
                 <div className="mt-3 grid grid-cols-2 gap-2 border-t border-hairline pt-3 text-center">
                   <div>
                     <div className="text-sm font-semibold text-ink-muted">Masuk</div>
-                    <div className="text-xl font-bold text-ink tabular-nums">{r.checkIn ?? '-'}</div>
+                    <div className="text-xl font-bold text-ink tabular-nums">
+                      {r.checkIn ?? <span className="text-ink-subtle">-</span>}
+                    </div>
                   </div>
                   <div>
                     <div className="text-sm font-semibold text-ink-muted">Pulang</div>
-                    <div className="text-xl font-bold text-ink tabular-nums">{r.checkOut ?? '-'}</div>
+                    <div className="text-xl font-bold text-ink tabular-nums">
+                      {r.checkOut ?? <span className="text-ink-subtle">-</span>}
+                    </div>
                   </div>
                 </div>
                 {!isStaff ? (

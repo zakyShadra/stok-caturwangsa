@@ -179,7 +179,9 @@ export default function Home() {
 
   const checkInButtons = (
     <>
-      <div className="mt-6 flex flex-wrap gap-3">
+      {/* Tombol ditumpuk di HP (teks "Absen Masuk" bungkus kalau
+          berdampingan di layar 390px), berdampingan di layar lebar. */}
+      <div className="mt-6 flex flex-col gap-3 sm:flex-row">
         <CheckButton
           label="Absen Masuk"
           successLabel="Absen berhasil"
@@ -241,7 +243,7 @@ export default function Home() {
             {myStatusLine}
             {!myCheckIn ? (
               <p className="mt-4 text-lg font-bold text-warning-ink">
-                Anda belum absen masuk hari ini.
+                Anda belum absen masuk.
               </p>
             ) : null}
             {checkInButtons}
@@ -303,19 +305,19 @@ export default function Home() {
                 Lihat riwayat absensi saya
               </Link>
             </div>
-            <div className="mt-4 flex flex-wrap gap-x-10 gap-y-3">
-              <p className="text-base">
-                <span className="text-2xl font-bold text-success tabular-nums">{myHadir}</span>
-                <span className="ml-2 text-ink-muted">Hadir</span>
-              </p>
-              <p className="text-base">
-                <span className="text-2xl font-bold text-warning tabular-nums">{myTelat}</span>
-                <span className="ml-2 text-ink-muted">Telat</span>
-              </p>
-              <p className="text-base">
-                <span className="text-2xl font-bold text-info tabular-nums">{myIzin}</span>
-                <span className="ml-2 text-ink-muted">Izin / Cuti</span>
-              </p>
+            <div className="mt-4 grid grid-cols-3 gap-3">
+              <div>
+                <div className="text-2xl font-bold text-success tabular-nums">{myHadir}</div>
+                <div className="mt-0.5 text-sm font-semibold text-ink-muted">Hadir</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-warning tabular-nums">{myTelat}</div>
+                <div className="mt-0.5 text-sm font-semibold text-ink-muted">Telat</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-info tabular-nums">{myIzin}</div>
+                <div className="mt-0.5 text-sm font-semibold text-ink-muted">Izin / Cuti</div>
+              </div>
             </div>
           </div>
 
@@ -323,15 +325,15 @@ export default function Home() {
           <div className="entrance grid grid-cols-3 gap-3" style={{ animationDelay: '250ms' }}>
             <div className="rounded-card border border-hairline bg-surface p-4 text-center shadow-card">
               <div className="text-3xl font-bold text-ink tabular-nums">{loading ? '-' : products.length}</div>
-              <div className="mt-1 text-sm font-semibold text-ink-muted">Jenis produk</div>
+              <div className="mt-1 text-sm font-semibold text-ink-muted">Produk</div>
             </div>
             <div className="rounded-card border border-hairline bg-surface p-4 text-center shadow-card">
               <div className="text-3xl font-bold text-warning tabular-nums">{loading ? '-' : menipisList.length}</div>
-              <div className="mt-1 text-sm font-semibold text-ink-muted">Stok menipis</div>
+              <div className="mt-1 text-sm font-semibold text-ink-muted">Menipis</div>
             </div>
             <div className="rounded-card border border-hairline bg-surface p-4 text-center shadow-card">
               <div className="text-3xl font-bold text-error tabular-nums">{loading ? '-' : habisCount}</div>
-              <div className="mt-1 text-sm font-semibold text-ink-muted">Stok habis</div>
+              <div className="mt-1 text-sm font-semibold text-ink-muted">Habis</div>
             </div>
           </div>
 
@@ -351,7 +353,7 @@ export default function Home() {
             </p>
             <p className="mt-3 rounded-button bg-surface-soft px-4 py-3 text-base text-ink">
               Bukti kerja: <span className="font-bold text-primary-deep tabular-nums">{withEvidence} dari {presentIds.length}</span> yang
-              hadir sudah melampirkan bukti kerja hari ini.
+              hadir sudah melampirkan bukti.
             </p>
             <div className="mt-6 grid gap-8 sm:grid-cols-2">
               <div>
@@ -394,25 +396,27 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Ringkasan hari ini: satu baris ringkas. */}
+          {/* Ringkasan hari ini: grid 2x2 di HP, satu baris di layar
+              lebar, supaya awal tiap kolom rata (baris flex-wrap lama
+              bungkus tidak rata). */}
           <div className="entrance rounded-card border border-hairline bg-surface p-5 shadow-card" style={{ animationDelay: '50ms' }}>
-            <div className="flex flex-wrap gap-x-10 gap-y-3">
-              <p className="text-base">
-                <span className="text-2xl font-bold text-ink tabular-nums">{totalKaryawan}</span>
-                <span className="ml-2 text-ink-muted">Total karyawan</span>
-              </p>
-              <p className="text-base">
-                <span className="text-2xl font-bold text-success tabular-nums">{hadir}</span>
-                <span className="ml-2 text-ink-muted">Hadir</span>
-              </p>
-              <p className="text-base">
-                <span className="text-2xl font-bold text-warning tabular-nums">{telat}</span>
-                <span className="ml-2 text-ink-muted">Telat</span>
-              </p>
-              <p className="text-base">
-                <span className="text-2xl font-bold text-info tabular-nums">{izin}</span>
-                <span className="ml-2 text-ink-muted">Izin / Cuti</span>
-              </p>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <div>
+                <div className="text-2xl font-bold text-ink tabular-nums">{totalKaryawan}</div>
+                <div className="mt-0.5 text-sm font-semibold text-ink-muted">Total karyawan</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-success tabular-nums">{hadir}</div>
+                <div className="mt-0.5 text-sm font-semibold text-ink-muted">Hadir</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-warning tabular-nums">{telat}</div>
+                <div className="mt-0.5 text-sm font-semibold text-ink-muted">Telat</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-info tabular-nums">{izin}</div>
+                <div className="mt-0.5 text-sm font-semibold text-ink-muted">Izin / Cuti</div>
+              </div>
             </div>
           </div>
 
@@ -422,28 +426,32 @@ export default function Home() {
           {!isBos ? (
             <div className="entrance rounded-card border border-hairline bg-surface p-5 shadow-card" style={{ animationDelay: '100ms' }}>
               <h2 className="text-lg font-bold text-ink">Absen saya</h2>
+              {/* Jam dan status di baris terpisah: satu baris gabungan
+                  bungkus tidak rata di HP. */}
               <p className="mt-1 text-base text-ink-muted">
                 <span className="font-bold text-primary-deep tabular-nums">{clock}</span> WIB
-                {myCheckIn ? (
-                  <>
-                    {' · masuk '}
-                    <span className="font-bold text-ink tabular-nums">{myCheckIn}</span>
-                    {myStatus ? (
-                      <span className="ml-2">
-                        <AttendanceBadge status={myStatus} />
-                      </span>
-                    ) : null}
-                    {myCheckOut ? (
-                      <span>
-                        {', pulang '}
-                        <span className="font-bold text-ink tabular-nums">{myCheckOut}</span>
-                      </span>
-                    ) : null}
-                  </>
-                ) : (
-                  ' · Anda belum absen masuk hari ini.'
-                )}
               </p>
+              {myCheckIn ? (
+                <p className="mt-1 text-base text-ink">
+                  Masuk pukul{' '}
+                  <span className="font-bold text-ink tabular-nums">{myCheckIn}</span>
+                  {myStatus ? (
+                    <span className="ml-2">
+                      <AttendanceBadge status={myStatus} />
+                    </span>
+                  ) : null}
+                  {myCheckOut ? (
+                    <span>
+                      {', pulang pukul '}
+                      <span className="font-bold text-ink tabular-nums">{myCheckOut}</span>
+                    </span>
+                  ) : null}
+                </p>
+              ) : (
+                <p className="mt-1 text-base font-bold text-warning-ink">
+                  Anda belum absen masuk.
+                </p>
+              )}
               {checkInButtons}
             </div>
           ) : null}

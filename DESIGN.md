@@ -219,3 +219,12 @@ Hadir hijau, Telat oranye, Izin/Cuti biru.
 - Don't: jangan pakai emoji sebagai dekorasi di UI.
 - Don't: jangan animasi loop tanpa akhir.
 - Don't: jangan teks di bawah 14px.
+- Do: filter pilihan eksklusif (Semua / Masuk / Keluar) pakai
+  SegmentedControl (ui.tsx), satu baris, tidak pernah bungkus.
+  Chip terpisah yang bungkus tidak rata dilarang untuk filter.
+- Do: nilai kosong tampil konsisten dengan warna ink-subtle: jumlah
+  kosong tampil "0", jam kosong tampil "-". Jangan biarkan tanda
+  hubung " - " menggantung di ujung baris: meta multi-bagian dipecah
+  ke baris terpisah (keterangan, lalu lokasi dan petugas).
+- Do: nama produk tidak pernah dipotong dengan truncate. Kartu stok
+  dua baris (nama sampai 2 baris + angka, lalu barcode + badge).

@@ -60,7 +60,7 @@ export default function Employees() {
         title="Karyawan"
         subtitle={`Total ${employees.length} karyawan`}
         action={
-          <BigButton tone="primary" onClick={openAdd}>
+          <BigButton tone="primary" onClick={openAdd} className="w-full sm:w-auto">
             + Tambah Karyawan
           </BigButton>
         }

@@ -166,8 +166,10 @@ export default function Scan() {
                   <span className="block text-lg font-bold text-ink">{p.name}</span>
                   <span className="block text-base text-ink-muted">
                     Stok {totalStock(p)} {p.unit}
-                    {p.barcode ? '' : ' (belum ada barcode)'}
                   </span>
+                  {p.barcode ? null : (
+                    <span className="block text-sm text-ink-subtle">Belum ada barcode</span>
+                  )}
                 </span>
                 <StatusBadge status={stockStatus(p)} />
               </button>
@@ -248,13 +250,20 @@ export default function Scan() {
 
           <div className="rounded-card border border-hairline bg-surface p-5 shadow-card">
             <p className="mb-3 text-lg font-bold text-ink">Keterangan</p>
-            <div className="flex flex-wrap gap-2">
-              {NOTES[moveType].map((n) => (
+            {/* Grid 2 kolom di HP (chip tidak bungkus tidak rata),
+                baris natural di layar lebar. Kalau jumlahnya ganjil,
+                chip terakhir membentang penuh di HP. */}
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+              {NOTES[moveType].map((n, i) => (
                 <button
                   key={n}
                   type="button"
                   onClick={() => setNote(n)}
-                  className={`btn-press min-h-[48px] rounded-full border px-5 text-base font-bold transition-colors ${
+                  className={`btn-press min-h-[48px] whitespace-nowrap rounded-full border px-3 text-[15px] font-bold transition-colors sm:px-5 sm:text-base ${
+                    NOTES[moveType].length % 2 === 1 && i === NOTES[moveType].length - 1
+                      ? 'max-sm:col-span-2'
+                      : ''
+                  } ${
                     note === n
                       ? 'border-primary bg-primary text-white'
                       : 'border-hairline bg-surface text-ink hover:bg-surface-soft'

@@ -1,7 +1,7 @@
 // Riwayat transaksi. Kolomnya meniru kartu kertas asli:
 // Tanggal, Keterangan, Masuk, Keluar, Sisa.
 import { useMemo, useState } from 'react';
-import { EmptyState, PageHeader } from '../components/ui';
+import { EmptyState, PageHeader, SegmentedControl } from '../components/ui';
 import { useStock } from '../lib/store';
 import { locationLabel } from '../lib/types';
 import type { MoveType } from '../lib/types';
@@ -10,8 +10,8 @@ type Filter = 'semua' | MoveType;
 
 const FILTERS: { id: Filter; label: string }[] = [
   { id: 'semua', label: 'Semua' },
-  { id: 'masuk', label: 'Masuk saja' },
-  { id: 'keluar', label: 'Keluar saja' },
+  { id: 'masuk', label: 'Masuk' },
+  { id: 'keluar', label: 'Keluar' },
 ];
 
 // Zona waktu perusahaan: WIB. Dipakai eksplisit supaya jam yang tampil
@@ -49,22 +49,12 @@ export default function History() {
         subtitle="Semua barang yang masuk dan keluar, terbaru di atas."
       />
 
-      <div className="mb-5 flex flex-wrap gap-2" role="group" aria-label="Filter jenis pergerakan">
-        {FILTERS.map((f) => (
-          <button
-            key={f.id}
-            type="button"
-            onClick={() => setFilter(f.id)}
-            className={`btn-press min-h-[48px] rounded-full border px-5 text-base font-bold transition-colors ${
-              filter === f.id
-                ? 'border-primary bg-primary text-white'
-                : 'border-hairline bg-surface text-ink hover:bg-surface-soft'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        options={FILTERS}
+        value={filter}
+        onChange={setFilter}
+        label="Filter jenis pergerakan"
+      />
 
       {loading ? (
         <p className="py-10 text-center text-lg text-ink-muted">Memuat riwayat...</p>
@@ -87,8 +77,12 @@ export default function History() {
                   <p className="mt-0.5 text-base text-ink-muted">
                     {formatDate(t.timestamp)} pukul {formatTime(t.timestamp)}
                   </p>
+                  {/* Meta dipecah dua baris (keterangan, lalu lokasi dan
+                      petugas) supaya tidak ada tanda hubung yang menggantung
+                      di ujung baris saat teks bungkus di HP. */}
+                  <p className="text-base text-ink-muted">{t.note}</p>
                   <p className="text-base text-ink-muted">
-                    {t.note} - {locationLabel(t.location)} - {t.staff}
+                    {locationLabel(t.location)} · {t.staff}
                   </p>
                 </div>
                 <span
@@ -103,13 +97,13 @@ export default function History() {
                 <div>
                   <div className="text-sm font-semibold text-ink-muted">Masuk</div>
                   <div className="text-xl font-bold tabular-nums text-success">
-                    {t.type === 'masuk' ? t.qty : '-'}
+                    {t.type === 'masuk' ? t.qty : <span className="text-ink-subtle">0</span>}
                   </div>
                 </div>
                 <div>
                   <div className="text-sm font-semibold text-ink-muted">Keluar</div>
                   <div className="text-xl font-bold tabular-nums text-warning">
-                    {t.type === 'keluar' ? t.qty : '-'}
+                    {t.type === 'keluar' ? t.qty : <span className="text-ink-subtle">0</span>}
                   </div>
                 </div>
                 <div>
