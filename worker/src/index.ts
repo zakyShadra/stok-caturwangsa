@@ -147,7 +147,7 @@ function parseLogRows(rows: string[][]): LogRow[] {
 function toMonthlyRows(rows: LogRow[]): MonthlyLogRow[] {
   return rows
     .filter((r) => r.tanggal !== '')
-    .map((r) => ({ name: r.name, type: r.type, qty: r.qty, tanggal: r.tanggal }));
+    .map((r) => ({ name: r.name, type: r.type, qty: r.qty, tanggal: r.tanggal, location: r.location }));
 }
 
 // ID transaksi berbasis ISI baris, bukan nomor baris: nomor baris
