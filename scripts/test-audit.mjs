@@ -265,7 +265,7 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
   const csvPath = path.join('/tmp', 'laporan-test.csv');
   await download.saveAs(csvPath);
   const csv = fs.readFileSync(csvPath, 'utf8');
-  check('audit: CSV terunduh berisi header + Maya Putri', csv.includes('Nama,Divisi,Hadir,Telat,Izin/Cuti,Menunggu Persetujuan,Total Hari') && csv.includes('Maya Putri'), csv.split('\n')[0]);
+  check('audit: CSV terunduh berisi header + Maya Putri', csv.includes('Nama,Divisi,Hadir,Izin/Cuti,Menunggu Persetujuan,Total Hari') && csv.includes('Maya Putri'), csv.split('\n')[0]);
   await checkOverflow(page, 'audit /laporan desktop');
 
   // Login salah password: pesan error, tetap di /login.

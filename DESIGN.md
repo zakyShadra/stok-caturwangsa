@@ -63,7 +63,8 @@ Catatan: hijau untuk Masuk, oranye untuk Keluar. Bukan hijau-merah,
 karena Keluar bukan error, dan oranye lebih ramah dibaca sebagai
 "barang pergi" daripada merah yang terasa seperti alarm. Merah hanya
 untuk Habis dan error. Badge absensi memakai token yang sama:
-Hadir hijau, Telat oranye, Izin/Cuti biru.
+Hadir hijau, Izin/Cuti biru. Tidak ada status Telat: jam kerja
+fleksibel, tidak ada jam masuk tetap.
 
 ## Typography
 
@@ -136,8 +137,9 @@ Hadir hijau, Telat oranye, Izin/Cuti biru.
   masing-masing tinggi 96px, ikon + label teks besar. Di bawahnya
   rekap saya bulan ini dan ringkasan stok.
 - Beranda Admin/Bos/Manager: panel "Perlu perhatian hari ini"
-  (belum absen, telat, bukti kerja yang belum dilampirkan, absen
-  yang menunggu persetujuan Bos), baris statistik, stok menipis.
+  (belum absen, sudah absen + jam masuknya, bukti kerja yang belum
+  dilampirkan, absen yang menunggu persetujuan Bos), baris statistik
+  (Total karyawan, Hadir, Izin/Cuti, Belum absen), stok menipis.
   Bos tidak absen.
 - Absensi: kartu bukti kerja di atas untuk staf (tombol
   "Lampirkan File" setelah absen masuk, thumbnail + nama file +
@@ -152,8 +154,8 @@ Hadir hijau, Telat oranye, Izin/Cuti biru.
 - Karyawan (Admin saja): kartu per karyawan (nama, jabatan, divisi,
   no HP, badge Aktif, tombol Ubah/Hapus), form tambah/ubah di atas.
 - Laporan: pemilih rentang tanggal, tombol Unduh CSV, kalimat
-  ringkasan periode, kartu per karyawan (Telat/Hadir/Izin/Total,
-  urut dari yang paling sering telat). Hanya catatan yang sudah
+  ringkasan periode, kartu per karyawan (Hadir/Izin/Total, urut
+  dari yang paling sedikit hadir). Hanya catatan yang sudah
   disetujui Bos yang dihitung; yang pending tampil terpisah.
 - Scan: kamera memenuhi layar dengan kotak viewfinder di tengah
   (kotak 280x160px, sudut tebal, garis scan). Di bawah kamera:
