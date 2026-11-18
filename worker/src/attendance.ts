@@ -1,0 +1,603 @@
+// Endpoint absensi Sabun Palem. Data absensi tinggal di D1 (database
+// sabun-palem-absen), foto selfie dan bukti kerja tinggal di tabel
+// photos di D1 yang sama (base64; lihat schema.sql untuk alasan dan
+// rencana migrasi ke R2). Worker adalah satu-satunya sumber kebenaran:
+// aplikasi di HP mana pun membaca data yang sama, jadi Bos bisa
+// melihat selfie Budi dari HP-nya sendiri dan Manager bisa melihat
+// laporan dari HP-nya.
+//
+// Endpoint (dipasang di bawah /api/absen):
+//   GET    /api/absen?from=YYYY-MM-DD&to=YYYY-MM-DD
+//          -> catatan absen + verifikasi (selfie) + bukti kerja
+//   POST   /api/absen/check-in   {employeeId, date, time, lat, lon,
+//          distanceMeters, selfieName, selfieData}
+//   POST   /api/absen/check-out  (bentuk sama seperti check-in)
+//   POST   /api/absen/approval   {employeeId, date, approval}
+//   POST   /api/absen/leave      {employeeId, date, type: Izin|Cuti}
+//   POST   /api/absen/evidence   {employeeId, date, name, kind,
+//          sizeLabel, data, mime}
+//   DELETE /api/absen/evidence/:id
+//   GET    /api/absen/foto/:key  -> isi foto (Content-Type sesuai mime)
+//   GET    /api/absen/recap?month=YYYY-MM -> hitungan per karyawan
+//
+// Aturan yang ditegakkan di sini (bukan hanya di aplikasi):
+// - Satu karyawan satu catatan per tanggal. Absen masuk yang sudah
+//   ada tidak bisa diulang, kecuali catatan itu ditolak Bos (maka
+//   absen masuk baru menggantikan yang ditolak, status kembali
+//   pending). Izin/Cuti tidak bisa diajukan kalau tanggal itu sudah
+//   ada catatan, dan sebaliknya.
+// - Absen pulang butuh catatan absen masuk yang belum ditolak.
+// - Foto dibatasi 700 KB base64 (sekitar 512 KB data asli). Selfie
+//   sudah diperkecil di aplikasi (maks 640px, JPEG 0.82), jadi
+//   batas ini tidak akan tercapai dalam pemakaian normal.
+import { Hono } from 'hono';
+
+export interface AttendanceEnv {
+  sabun_palem_absen: D1Database;
+}
+
+const MAX_PHOTO_BASE64 = 700_000;
+const KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+function jsonError(c: { json: (body: object, status: number) => Response }, status: number, message: string) {
+  return c.json({ error: message }, status);
+}
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function randomSuffix(): string {
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Pisahkan data URL "data:<mime>;base64,<isi>" jadi mime + base64.
+// Kembalikan null kalau formatnya bukan data URL yang benar.
+function parseDataUrl(dataUrl: unknown): { mime: string; base64: string } | null {
+  if (typeof dataUrl !== 'string') return null;
+  const match = /^data:([a-zA-Z0-9][a-zA-Z0-9!#$&^_.+-]*\/[a-zA-Z0-9][a-zA-Z0-9!#$&^_.+-]*);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+  if (!match) return null;
+  return { mime: match[1], base64: match[2] };
+}
+
+interface AttendanceRow {
+  id: number;
+  employee_id: number;
+  date: string;
+  check_in: string | null;
+  check_out: string | null;
+  status: string;
+  approval: string;
+}
+
+interface VerificationRow {
+  attendance_id: number;
+  kind: string;
+  lat: number;
+  lon: number;
+  distance_m: number;
+  selfie_key: string | null;
+  selfie_name: string;
+  time: string;
+}
+
+interface EvidenceRow {
+  id: number;
+  employee_id: number;
+  date: string;
+  name: string;
+  kind: string;
+  size_label: string;
+  photo_key: string;
+}
+
+function photoUrl(c: { req: { url: string } }, key: string): string {
+  return `${new URL(c.req.url).origin}/api/absen/foto/${key}`;
+}
+
+function toRecordJson(
+  c: { req: { url: string } },
+  row: AttendanceRow,
+  verifications: VerificationRow[],
+  evidence: EvidenceRow[],
+) {
+  const byKind = (kind: string) => verifications.find((v) => v.kind === kind);
+  const verJson = (v: VerificationRow | undefined) =>
+    v
+      ? {
+          lat: v.lat,
+          lon: v.lon,
+          distanceMeters: v.distance_m,
+          selfieUrl: v.selfie_key ? photoUrl(c, v.selfie_key) : null,
+          selfieName: v.selfie_name,
+          time: v.time,
+        }
+      : null;
+  return {
+    employeeId: row.employee_id,
+    date: row.date,
+    checkIn: row.check_in,
+    checkOut: row.check_out,
+    status: row.status,
+    approval: row.approval,
+    verification: {
+      masuk: verJson(byKind('masuk')),
+      pulang: verJson(byKind('pulang')),
+    },
+    evidence: evidence.map((e) => ({
+      id: String(e.id),
+      name: e.name,
+      kind: e.kind,
+      sizeLabel: e.size_label,
+      url: photoUrl(c, e.photo_key),
+    })),
+  };
+}
+
+export const attendanceRoutes = new Hono<{ Bindings: AttendanceEnv }>();
+
+// GET /api/absen?from&to: catatan dalam rentang tanggal, masing-masing
+// lengkap dengan verifikasi dan bukti kerja. Tanpa parameter, dipakai
+// bulan berjalan.
+attendanceRoutes.get('/', async (c) => {
+  const from = c.req.query('from') ?? '';
+  const to = c.req.query('to') ?? '';
+  if ((from !== '' && !DATE_PATTERN.test(from)) || (to !== '' && !DATE_PATTERN.test(to))) {
+    return jsonError(c, 400, 'from dan to harus format YYYY-MM-DD');
+  }
+  const db = c.env.sabun_palem_absen;
+  try {
+    const today = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Jakarta',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+    const start = from !== '' ? from : `${today.slice(0, 7)}-01`;
+    const end = to !== '' ? to : today;
+    const rows = await db
+      .prepare('SELECT * FROM attendance WHERE date >= ? AND date <= ? ORDER BY date ASC, employee_id ASC')
+      .bind(start, end)
+      .all<AttendanceRow>();
+    const ids = (rows.results ?? []).map((r) => r.id);
+    let verifications: VerificationRow[] = [];
+    let evidence: EvidenceRow[] = [];
+    if (ids.length > 0) {
+      const placeholders = ids.map(() => '?').join(',');
+      const v = await db
+        .prepare(`SELECT * FROM verification WHERE attendance_id IN (${placeholders})`)
+        .bind(...ids)
+        .all<VerificationRow>();
+      verifications = v.results ?? [];
+    }
+    const e = await db
+      .prepare('SELECT * FROM evidence WHERE date >= ? AND date <= ? ORDER BY id ASC')
+      .bind(start, end)
+      .all<EvidenceRow>();
+    evidence = e.results ?? [];
+    return c.json({
+      records: (rows.results ?? []).map((r) =>
+        toRecordJson(
+          c,
+          r,
+          verifications.filter((v) => v.attendance_id === r.id),
+          evidence.filter((x) => x.employee_id === r.employee_id && x.date === r.date),
+        ),
+      ),
+    });
+  } catch (e) {
+    console.error('GET /api/absen gagal:', e instanceof Error ? e.message : e);
+    return jsonError(c, 502, 'Gagal membaca absensi dari database');
+  }
+});
+
+interface CheckBody {
+  employeeId?: unknown;
+  date?: unknown;
+  time?: unknown;
+  lat?: unknown;
+  lon?: unknown;
+  distanceMeters?: unknown;
+  selfieName?: unknown;
+  selfieData?: unknown;
+}
+
+function validateCheck(body: CheckBody): string | null {
+  if (typeof body.employeeId !== 'number' || !Number.isInteger(body.employeeId) || body.employeeId < 1 || body.employeeId > 1000) {
+    return 'employeeId tidak benar';
+  }
+  if (typeof body.date !== 'string' || !DATE_PATTERN.test(body.date)) return 'date harus format YYYY-MM-DD';
+  if (typeof body.time !== 'string' || !TIME_PATTERN.test(body.time)) return 'time harus format HH:MM';
+  if (typeof body.lat !== 'number' || body.lat < -90 || body.lat > 90) return 'lat tidak benar';
+  if (typeof body.lon !== 'number' || body.lon < -180 || body.lon > 180) return 'lon tidak benar';
+  if (typeof body.distanceMeters !== 'number' || body.distanceMeters < 0 || body.distanceMeters > 100000) {
+    return 'distanceMeters tidak benar';
+  }
+  if (typeof body.selfieName !== 'string' || body.selfieName.trim() === '' || body.selfieName.length > 200) {
+    return 'selfieName tidak benar';
+  }
+  const photo = parseDataUrl(body.selfieData);
+  if (!photo) return 'selfieData harus data URL gambar yang benar';
+  if (!photo.mime.startsWith('image/')) return 'selfie harus berupa gambar';
+  if (photo.base64.length > MAX_PHOTO_BASE64) return 'Foto selfie terlalu besar (maksimal sekitar 500 KB)';
+  return null;
+}
+
+async function storePhoto(
+  db: D1Database,
+  key: string,
+  mime: string,
+  base64: string,
+): Promise<void> {
+  const size = Math.floor((base64.length * 3) / 4);
+  await db
+    .prepare('INSERT INTO photos (key, data, mime, size) VALUES (?, ?, ?, ?)')
+    .bind(key, base64, mime, size)
+    .run();
+}
+
+async function deletePhotosForAttendance(db: D1Database, attendanceId: number): Promise<void> {
+  const rows = await db
+    .prepare('SELECT selfie_key FROM verification WHERE attendance_id = ? AND selfie_key IS NOT NULL')
+    .bind(attendanceId)
+    .all<{ selfie_key: string }>();
+  for (const r of rows.results ?? []) {
+    await db.prepare('DELETE FROM photos WHERE key = ?').bind(r.selfie_key).run();
+  }
+  await db.prepare('DELETE FROM verification WHERE attendance_id = ?').bind(attendanceId).run();
+}
+
+// POST /api/absen/check-in: catat absen masuk + selfie. Kalau catatan
+// hari itu sudah ada dan belum ditolak, tolak (sudah absen). Kalau
+// catatan itu ditolak Bos, absen masuk baru menggantikannya.
+attendanceRoutes.post('/check-in', async (c) => {
+  let body: CheckBody;
+  try {
+    body = (await c.req.json()) as CheckBody;
+  } catch {
+    return jsonError(c, 400, 'Isi request bukan JSON yang benar');
+  }
+  const invalid = validateCheck(body);
+  if (invalid) return jsonError(c, 400, invalid);
+  const photo = parseDataUrl(body.selfieData);
+  if (!photo) return jsonError(c, 400, 'selfieData tidak benar');
+  const db = c.env.sabun_palem_absen;
+  const employeeId = body.employeeId as number;
+  const date = body.date as string;
+  const time = body.time as string;
+  try {
+    const existing = await db
+      .prepare('SELECT * FROM attendance WHERE employee_id = ? AND date = ?')
+      .bind(employeeId, date)
+      .first<AttendanceRow>();
+    if (existing && existing.status !== 'Hadir') {
+      return jsonError(c, 400, 'Tanggal ini sudah ada pengajuan Izin/Cuti');
+    }
+    if (existing && existing.check_in !== null && existing.approval !== 'rejected') {
+      return jsonError(c, 400, 'Sudah absen masuk hari ini');
+    }
+    const key = `selfie-${employeeId}-${date}-masuk-${randomSuffix()}`;
+    await storePhoto(db, key, photo.mime, photo.base64);
+    let attendanceId: number;
+    if (existing) {
+      await deletePhotosForAttendance(db, existing.id);
+      await db
+        .prepare(
+          "UPDATE attendance SET check_in = ?, check_out = NULL, status = 'Hadir', approval = 'pending', updated_at = ? WHERE id = ?",
+        )
+        .bind(time, nowIso(), existing.id)
+        .run();
+      attendanceId = existing.id;
+    } else {
+      const res = await db
+        .prepare(
+          "INSERT INTO attendance (employee_id, date, check_in, check_out, status, approval, created_at, updated_at) VALUES (?, ?, ?, NULL, 'Hadir', 'pending', ?, ?)",
+        )
+        .bind(employeeId, date, time, nowIso(), nowIso())
+        .run();
+      attendanceId = Number(res.meta.last_row_id);
+    }
+    await db
+      .prepare(
+        'INSERT INTO verification (attendance_id, kind, lat, lon, distance_m, selfie_key, selfie_name, time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .bind(
+        attendanceId,
+        'masuk',
+        body.lat as number,
+        body.lon as number,
+        Math.round(body.distanceMeters as number),
+        key,
+        (body.selfieName as string).trim(),
+        time,
+      )
+      .run();
+    return c.json({ ok: true });
+  } catch (e) {
+    console.error('POST /api/absen/check-in gagal:', e instanceof Error ? e.message : e);
+    return jsonError(c, 502, 'Gagal mencatat absen masuk');
+  }
+});
+
+// POST /api/absen/check-out: catat absen pulang + selfie. Butuh
+// catatan absen masuk yang belum ditolak dan belum ada jam pulang.
+attendanceRoutes.post('/check-out', async (c) => {
+  let body: CheckBody;
+  try {
+    body = (await c.req.json()) as CheckBody;
+  } catch {
+    return jsonError(c, 400, 'Isi request bukan JSON yang benar');
+  }
+  const invalid = validateCheck(body);
+  if (invalid) return jsonError(c, 400, invalid);
+  const photo = parseDataUrl(body.selfieData);
+  if (!photo) return jsonError(c, 400, 'selfieData tidak benar');
+  const db = c.env.sabun_palem_absen;
+  const employeeId = body.employeeId as number;
+  const date = body.date as string;
+  const time = body.time as string;
+  try {
+    const existing = await db
+      .prepare('SELECT * FROM attendance WHERE employee_id = ? AND date = ?')
+      .bind(employeeId, date)
+      .first<AttendanceRow>();
+    if (!existing || existing.check_in === null) {
+      return jsonError(c, 400, 'Belum absen masuk hari ini');
+    }
+    if (existing.approval === 'rejected') {
+      return jsonError(c, 400, 'Absen hari ini ditolak Bos, silakan absen masuk ulang');
+    }
+    if (existing.check_out !== null) {
+      return jsonError(c, 400, 'Sudah absen pulang hari ini');
+    }
+    const key = `selfie-${employeeId}-${date}-pulang-${randomSuffix()}`;
+    await storePhoto(db, key, photo.mime, photo.base64);
+    await db
+      .prepare('UPDATE attendance SET check_out = ?, updated_at = ? WHERE id = ?')
+      .bind(time, nowIso(), existing.id)
+      .run();
+    await db
+      .prepare(
+        'INSERT INTO verification (attendance_id, kind, lat, lon, distance_m, selfie_key, selfie_name, time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .bind(
+        existing.id,
+        'pulang',
+        body.lat as number,
+        body.lon as number,
+        Math.round(body.distanceMeters as number),
+        key,
+        (body.selfieName as string).trim(),
+        time,
+      )
+      .run();
+    return c.json({ ok: true });
+  } catch (e) {
+    console.error('POST /api/absen/check-out gagal:', e instanceof Error ? e.message : e);
+    return jsonError(c, 502, 'Gagal mencatat absen pulang');
+  }
+});
+
+// POST /api/absen/approval: Bos menyetujui atau menolak satu catatan.
+attendanceRoutes.post('/approval', async (c) => {
+  let body: { employeeId?: unknown; date?: unknown; approval?: unknown };
+  try {
+    body = (await c.req.json()) as { employeeId?: unknown; date?: unknown; approval?: unknown };
+  } catch {
+    return jsonError(c, 400, 'Isi request bukan JSON yang benar');
+  }
+  if (
+    typeof body.employeeId !== 'number' ||
+    !Number.isInteger(body.employeeId) ||
+    typeof body.date !== 'string' ||
+    !DATE_PATTERN.test(body.date) ||
+    (body.approval !== 'approved' && body.approval !== 'rejected')
+  ) {
+    return jsonError(c, 400, 'employeeId, date, atau approval tidak benar');
+  }
+  const db = c.env.sabun_palem_absen;
+  try {
+    const res = await db
+      .prepare('UPDATE attendance SET approval = ?, updated_at = ? WHERE employee_id = ? AND date = ?')
+      .bind(body.approval, nowIso(), body.employeeId, body.date)
+      .run();
+    if ((res.meta.changes ?? 0) === 0) {
+      return jsonError(c, 404, 'Catatan absen tidak ditemukan');
+    }
+    return c.json({ ok: true });
+  } catch (e) {
+    console.error('POST /api/absen/approval gagal:', e instanceof Error ? e.message : e);
+    return jsonError(c, 502, 'Gagal mengubah persetujuan');
+  }
+});
+
+// POST /api/absen/leave: staf mengajukan Izin/Cuti untuk satu tanggal.
+// Tanggal itu belum boleh punya catatan apa pun.
+attendanceRoutes.post('/leave', async (c) => {
+  let body: { employeeId?: unknown; date?: unknown; type?: unknown };
+  try {
+    body = (await c.req.json()) as { employeeId?: unknown; date?: unknown; type?: unknown };
+  } catch {
+    return jsonError(c, 400, 'Isi request bukan JSON yang benar');
+  }
+  if (
+    typeof body.employeeId !== 'number' ||
+    !Number.isInteger(body.employeeId) ||
+    typeof body.date !== 'string' ||
+    !DATE_PATTERN.test(body.date) ||
+    (body.type !== 'Izin' && body.type !== 'Cuti')
+  ) {
+    return jsonError(c, 400, 'employeeId, date, atau type tidak benar');
+  }
+  const db = c.env.sabun_palem_absen;
+  try {
+    const existing = await db
+      .prepare('SELECT id FROM attendance WHERE employee_id = ? AND date = ?')
+      .bind(body.employeeId, body.date)
+      .first<{ id: number }>();
+    if (existing) {
+      return jsonError(c, 400, 'Tanggal ini sudah ada catatan absen');
+    }
+    await db
+      .prepare(
+        "INSERT INTO attendance (employee_id, date, check_in, check_out, status, approval, created_at, updated_at) VALUES (?, ?, NULL, NULL, ?, 'pending', ?, ?)",
+      )
+      .bind(body.employeeId, body.date, body.type, nowIso(), nowIso())
+      .run();
+    return c.json({ ok: true });
+  } catch (e) {
+    console.error('POST /api/absen/leave gagal:', e instanceof Error ? e.message : e);
+    return jsonError(c, 502, 'Gagal mencatat pengajuan');
+  }
+});
+
+// POST /api/absen/evidence: staf melampirkan bukti kerja (foto atau
+// dokumen). Foto sudah diperkecil di aplikasi; dokumen dibatasi
+// ukuran yang sama.
+attendanceRoutes.post('/evidence', async (c) => {
+  let body: {
+    employeeId?: unknown;
+    date?: unknown;
+    name?: unknown;
+    kind?: unknown;
+    sizeLabel?: unknown;
+    data?: unknown;
+  };
+  try {
+    body = (await c.req.json()) as typeof body;
+  } catch {
+    return jsonError(c, 400, 'Isi request bukan JSON yang benar');
+  }
+  if (
+    typeof body.employeeId !== 'number' ||
+    !Number.isInteger(body.employeeId) ||
+    typeof body.date !== 'string' ||
+    !DATE_PATTERN.test(body.date) ||
+    typeof body.name !== 'string' ||
+    body.name.trim() === '' ||
+    body.name.length > 200 ||
+    (body.kind !== 'image' && body.kind !== 'doc') ||
+    typeof body.sizeLabel !== 'string' ||
+    body.sizeLabel.length > 50
+  ) {
+    return jsonError(c, 400, 'Isi pengajuan bukti tidak benar');
+  }
+  const photo = parseDataUrl(body.data);
+  if (!photo) return jsonError(c, 400, 'data harus data URL yang benar');
+  if (photo.base64.length > MAX_PHOTO_BASE64) {
+    return jsonError(c, 400, 'File terlalu besar (maksimal sekitar 500 KB)');
+  }
+  const db = c.env.sabun_palem_absen;
+  try {
+    const key = `bukti-${body.employeeId}-${body.date}-${randomSuffix()}`;
+    await storePhoto(db, key, photo.mime, photo.base64);
+    const res = await db
+      .prepare(
+        'INSERT INTO evidence (employee_id, date, name, kind, size_label, photo_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      )
+      .bind(body.employeeId, body.date, body.name.trim(), body.kind, body.sizeLabel, key, nowIso())
+      .run();
+    return c.json({
+      id: String(res.meta.last_row_id),
+      name: body.name.trim(),
+      kind: body.kind,
+      sizeLabel: body.sizeLabel,
+      url: photoUrl(c, key),
+    });
+  } catch (e) {
+    console.error('POST /api/absen/evidence gagal:', e instanceof Error ? e.message : e);
+    return jsonError(c, 502, 'Gagal menyimpan bukti kerja');
+  }
+});
+
+// DELETE /api/absen/evidence/:id: hapus satu bukti kerja + fotonya.
+attendanceRoutes.delete('/evidence/:id', async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id < 1) {
+    return jsonError(c, 400, 'id tidak benar');
+  }
+  const db = c.env.sabun_palem_absen;
+  try {
+    const row = await db
+      .prepare('SELECT photo_key FROM evidence WHERE id = ?')
+      .bind(id)
+      .first<{ photo_key: string }>();
+    if (!row) return jsonError(c, 404, 'Bukti tidak ditemukan');
+    await db.prepare('DELETE FROM evidence WHERE id = ?').bind(id).run();
+    await db.prepare('DELETE FROM photos WHERE key = ?').bind(row.photo_key).run();
+    return c.json({ ok: true });
+  } catch (e) {
+    console.error('DELETE /api/absen/evidence gagal:', e instanceof Error ? e.message : e);
+    return jsonError(c, 502, 'Gagal menghapus bukti kerja');
+  }
+});
+
+// GET /api/absen/foto/:key: isi satu foto (selfie atau bukti).
+// Dipakai langsung sebagai src tag img di aplikasi.
+attendanceRoutes.get('/foto/:key', async (c) => {
+  const key = c.req.param('key');
+  if (!KEY_PATTERN.test(key)) {
+    return jsonError(c, 400, 'key tidak benar');
+  }
+  const db = c.env.sabun_palem_absen;
+  try {
+    const row = await db
+      .prepare('SELECT data, mime FROM photos WHERE key = ?')
+      .bind(key)
+      .first<{ data: string; mime: string }>();
+    if (!row) return jsonError(c, 404, 'Foto tidak ditemukan');
+    const binary = Uint8Array.from(atob(row.data), (ch) => ch.charCodeAt(0));
+    return new Response(binary, {
+      headers: {
+        'Content-Type': row.mime,
+        'Cache-Control': 'public, max-age=86400',
+      },
+    });
+  } catch (e) {
+    console.error('GET /api/absen/foto gagal:', e instanceof Error ? e.message : e);
+    return jsonError(c, 502, 'Gagal membaca foto');
+  }
+});
+
+// GET /api/absen/recap?month=YYYY-MM: hitungan per karyawan dalam
+// satu bulan (hanya yang sudah disetujui yang dihitung sebagai
+// hadir/izin; yang pending dihitung terpisah).
+attendanceRoutes.get('/recap', async (c) => {
+  const raw = c.req.query('month') ?? '';
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(raw);
+  if (!match) {
+    return jsonError(c, 400, 'month harus format YYYY-MM');
+  }
+  const month = raw;
+  const db = c.env.sabun_palem_absen;
+  try {
+    const rows = await db
+      .prepare(
+        `SELECT employee_id,
+          SUM(CASE WHEN approval = 'approved' AND status = 'Hadir' THEN 1 ELSE 0 END) AS hadir,
+          SUM(CASE WHEN approval = 'approved' AND status IN ('Izin', 'Cuti') THEN 1 ELSE 0 END) AS izin,
+          SUM(CASE WHEN approval = 'pending' THEN 1 ELSE 0 END) AS pending,
+          SUM(CASE WHEN approval = 'approved' THEN 1 ELSE 0 END) AS total
+         FROM attendance WHERE substr(date, 1, 7) = ? GROUP BY employee_id`,
+      )
+      .bind(month)
+      .all<{ employee_id: number; hadir: number; izin: number; pending: number; total: number }>();
+    return c.json({
+      month,
+      employees: (rows.results ?? []).map((r) => ({
+        employeeId: r.employee_id,
+        hadir: r.hadir,
+        izin: r.izin,
+        pending: r.pending,
+        total: r.total,
+      })),
+    });
+  } catch (e) {
+    console.error('GET /api/absen/recap gagal:', e instanceof Error ? e.message : e);
+    return jsonError(c, 502, 'Gagal membaca rekap');
+  }
+});

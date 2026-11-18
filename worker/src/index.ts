@@ -19,6 +19,8 @@
 // (lihat wrangler.toml [triggers]).
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { attendanceRoutes } from './attendance';
+import type { AttendanceEnv } from './attendance';
 import { insertRowAtTop, readRange } from './sheets';
 import type { SheetsEnv } from './sheets';
 import {
@@ -36,7 +38,7 @@ import {
   isLocationId,
 } from './products';
 
-interface Env extends SheetsEnv {
+interface Env extends SheetsEnv, AttendanceEnv {
   ALLOWED_ORIGINS: string;
 }
 
@@ -50,7 +52,7 @@ app.use('*', async (c, next) => {
   const allowed = (c.env.ALLOWED_ORIGINS ?? '').split(',').map((s) => s.trim());
   return cors({
     origin: (origin) => (allowed.includes(origin) ? origin : allowed[0]),
-    allowMethods: ['GET', 'POST', 'OPTIONS'],
+    allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type'],
   })(c, next);
 });
@@ -60,6 +62,10 @@ function jsonError(c: { json: (body: object, status: number) => Response }, stat
 }
 
 app.get('/', (c) => c.json({ ok: true, service: 'stok-sabun-palem' }));
+
+// Absensi: catatan + selfie + bukti kerja di D1 (lihat
+// src/attendance.ts). CORS yang sama dengan endpoint stok berlaku.
+app.route('/api/absen', attendanceRoutes);
 
 // GET /api/stock: baca Stok Terkini, gabung dengan katalog (id produk
 // berasal dari katalog, angka stok dari rumus Sheet).
