@@ -1,12 +1,15 @@
-// Lapisan data. Saat ini data disimpan di memori (belum ada backend),
-// tapi bentuk fungsinya meniru endpoint Cloudflare Workers yang akan datang,
-// supaya nanti tinggal ganti isi fungsi ini dengan fetch, tanpa ubah
-// komponen lain.
+// Lapisan data. Ada dua sumber data:
+//   - Kalau VITE_API_URL diisi (URL Cloudflare Workers), semua data
+//     dibaca dari dan ditulis ke Google Sheet lewat Worker.
+//   - Kalau tidak diisi, data disimpan di memori selama sesi berjalan
+//     (dipakai saat pengembangan lokal tanpa backend).
+// Komponen lain tidak perlu tahu sumbernya; bentuk fungsinya sama.
 //
-// Endpoint Workers yang direncanakan:
-//   POST /api/scan  -> catat satu pergerakan (append ke Sheet Log)
-//   GET  /api/stock -> daftar produk + stok terkini (baca Sheet Stok)
-//   GET  /api/log   -> riwayat transaksi (baca Sheet Log)
+// Endpoint Workers:
+//   POST /api/scan       -> catat satu pergerakan (append ke Sheet Log)
+//   POST /api/scan/undo  -> batalkan transaksi (baris koreksi di Log)
+//   GET  /api/stock      -> daftar produk + stok terkini (baca Sheet Stok)
+//   GET  /api/log        -> riwayat transaksi (baca Sheet Log)
 import { buildInitialTransactions, PRODUCTS } from './products';
 import type { LocationId, MoveType, Product, Transaction } from './types';
 
@@ -20,8 +23,53 @@ export interface ScanInput {
   staff: string;
 }
 
+const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '');
+
+// ---- Sumber data jarak jauh (Cloudflare Workers + Google Sheet) ----
+
+async function remoteFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+  });
+  const data = (await res.json().catch(() => null)) as { error?: string } | T | null;
+  if (!res.ok) {
+    const message =
+      data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+        ? data.error
+        : `Server mengembalikan ${res.status}`;
+    throw new Error(message);
+  }
+  return data as T;
+}
+
+const remoteApi = {
+  async getStock(): Promise<Product[]> {
+    return remoteFetch<Product[]>('/api/stock');
+  },
+
+  async getLog(): Promise<Transaction[]> {
+    return remoteFetch<Transaction[]>('/api/log');
+  },
+
+  async recordScan(input: ScanInput): Promise<{ product: Product; tx: Transaction }> {
+    return remoteFetch<{ product: Product; tx: Transaction }>('/api/scan', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+
+  async undoLast(txId: string): Promise<void> {
+    await remoteFetch<{ ok: boolean }>('/api/scan/undo', {
+      method: 'POST',
+      body: JSON.stringify({ txId }),
+    });
+  },
+};
+
+// ---- Sumber data lokal (memori, tanpa backend) ----
+
 // Salinan data produk yang bisa diubah selama sesi berjalan.
-// Di versi produksi, data ini tinggal di Google Sheet.
 let productsState: Product[] = PRODUCTS.map((p) => ({
   ...p,
   stock: { ...p.stock },
@@ -33,7 +81,7 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export const api = {
+const localApi = {
   // GET /api/stock
   async getStock(): Promise<Product[]> {
     await delay(120);
@@ -74,8 +122,9 @@ export const api = {
   },
 
   // Undo transaksi terakhir (untuk tombol Batalkan di layar sukses).
-  // Di versi produksi, ini append baris koreksi ke Sheet Log,
-  // bukan hapus baris lama (audit trail tetap utuh).
+  // Versi jarak jauh append baris koreksi ke Sheet Log, bukan hapus
+  // baris lama (audit trail tetap utuh). Versi lokal menghapus dari
+  // memori karena tidak ada sheet yang perlu dijaga.
   async undoLast(txId: string): Promise<void> {
     await delay(150);
     const tx = logState.find((t) => t.id === txId);
@@ -89,3 +138,6 @@ export const api = {
     logState = logState.filter((t) => t.id !== txId);
   },
 };
+
+// Pilih sumber data berdasarkan konfigurasi build.
+export const api = API_URL ? remoteApi : localApi;
