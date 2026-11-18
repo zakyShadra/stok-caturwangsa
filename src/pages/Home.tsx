@@ -1,8 +1,88 @@
-// Beranda: 3 tombol raksasa, satu tugas per tombol.
-// Di bawahnya ringkasan kecil: total produk, menipis, habis.
+// Beranda gabungan: absensi + stok dalam satu layar.
+// - Staf: pertanyaan utama "Saya sudah absen belum?" jadi hero,
+//   di bawahnya 3 tombol raksasa stok (Barang Masuk, Barang Keluar,
+//   Lihat Stok), lalu rekap bulan ini.
+// - Admin/Bos/Manager: pertanyaan utama "Siapa yang belum absen?
+//   Siapa yang telat?" jadi hero, lalu angka ringkasan, stok yang
+//   menipis, dan grafik 7 hari terakhir.
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../lib/auth';
+import { useAttendanceState } from '../lib/attendance-state';
 import { useStock } from '../lib/store';
+import {
+  EMPLOYEES,
+  LATE_CUTOFF,
+  formatDateID,
+  getAttendance,
+  getWeekSummary,
+  jakartaDate,
+  shortDateID,
+} from '../lib/attendance';
+import { AttendanceBadge, BigButton } from '../components/ui';
 import { stockStatus, totalStock } from '../lib/types';
+
+function useJakartaClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const jakarta = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+  const hh = String(jakarta.getHours()).padStart(2, '0');
+  const mm = String(jakarta.getMinutes()).padStart(2, '0');
+  const ss = String(jakarta.getSeconds()).padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
+}
+
+function CheckIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 12.5 9.5 18 20 6.5" />
+    </svg>
+  );
+}
+
+// Tombol absen: setelah diklik, berubah jadi hijau dengan centang +
+// label sukses, scale-in 200ms. Bukan sekadar teks berubah: warna,
+// ikon, dan gerak pop-nya menandai aksi berhasil.
+function CheckButton({
+  label,
+  successLabel,
+  done,
+  disabled,
+  onClick,
+  tone,
+}: {
+  label: string;
+  successLabel: string;
+  done: boolean;
+  disabled: boolean;
+  onClick: () => void;
+  tone: 'primary' | 'secondary';
+}) {
+  if (done) {
+    return (
+      <button
+        disabled
+        className="success-pop flex min-h-[56px] flex-1 items-center justify-center gap-3 rounded-button bg-success px-6 text-lg font-bold text-white"
+      >
+        <CheckIcon />
+        {successLabel}
+      </button>
+    );
+  }
+  return (
+    <BigButton
+      tone={tone === 'primary' ? 'primary' : 'secondary'}
+      onClick={onClick}
+      disabled={disabled}
+      className="flex-1"
+    >
+      {label}
+    </BigButton>
+  );
+}
 
 function ArrowInIcon() {
   return (
@@ -38,82 +118,404 @@ function ListIcon() {
 }
 
 export default function Home() {
+  const { user } = useAuth();
+  const isStaff = user?.role === 'Staff';
+  const clock = useJakartaClock();
+  const today = jakartaDate(0);
+
+  // Status absen saya hari ini, dipakai bersama halaman Absensi
+  // (supaya tombol upload bukti kerja tahu saya sudah absen).
+  const { myCheckIn, myCheckOut, myStatus, checkIn, checkOut, evidenceByEmployee } = useAttendanceState();
+
   const { products, loading } = useStock();
-  const menipis = products.filter((p) => stockStatus(p) === 'menipis').length;
-  const habis = products.filter((p) => stockStatus(p) === 'habis').length;
+  const menipisList = products.filter((p) => stockStatus(p) === 'menipis');
+  const habisCount = products.filter((p) => stockStatus(p) === 'habis').length;
   const totalUnits = products.reduce((sum, p) => sum + totalStock(p), 0);
+
+  const records = useMemo(() => getAttendance(), []);
+  const todayRecords = records.filter((r) => r.date === today);
+  const weekSummary = useMemo(() => getWeekSummary(records), [records]);
+
+  const totalKaryawan = EMPLOYEES.length;
+  const hadir = todayRecords.filter((r) => r.status === 'Hadir').length;
+  const telatRecords = todayRecords.filter((r) => r.status === 'Telat');
+  const telat = telatRecords.length;
+  const izin = todayRecords.filter((r) => r.status === 'Izin' || r.status === 'Cuti').length;
+
+  const checkedInIds = new Set(todayRecords.map((r) => r.employeeId));
+  const belumAbsen = EMPLOYEES.filter((e) => !checkedInIds.has(e.id));
+
+  const employeeName = (id: number) => EMPLOYEES.find((e) => e.id === id)?.name ?? '-';
+  const employeeDivision = (id: number) => EMPLOYEES.find((e) => e.id === id)?.division ?? '-';
+
+  // Rekap saya bulan ini (akun staf = Budi Santoso, id 1).
+  const monthPrefix = today.slice(0, 7);
+  const myMonth = records.filter((r) => r.employeeId === 1 && r.date.startsWith(monthPrefix));
+  const myHadir = myMonth.filter((r) => r.status === 'Hadir').length;
+  const myTelat = myMonth.filter((r) => r.status === 'Telat').length;
+  const myIzin = myMonth.filter((r) => r.status === 'Izin' || r.status === 'Cuti').length;
+
+  const maxBar = Math.max(...weekSummary.map((d) => d.hadir + d.telat + d.izin), 1);
+
+  // Bukti kerja: berapa dari yang hadir hari ini yang sudah melampirkan.
+  const presentIds = todayRecords
+    .filter((r) => r.status === 'Hadir' || r.status === 'Telat')
+    .map((r) => r.employeeId);
+  const withEvidence = presentIds.filter((id) => (evidenceByEmployee[id] ?? []).length > 0).length;
+
+  const handleCheckIn = () => checkIn();
+  const handleCheckOut = () => checkOut();
+
+  const checkInButtons = (
+    <>
+      <div className="mt-6 flex flex-wrap gap-3">
+        <CheckButton
+          label="Absen Masuk"
+          successLabel="Absen berhasil"
+          done={!!myCheckIn}
+          disabled={!!myCheckIn}
+          onClick={handleCheckIn}
+          tone="primary"
+        />
+        <CheckButton
+          label="Absen Pulang"
+          successLabel="Pulang tercatat"
+          done={!!myCheckOut}
+          disabled={!myCheckIn || !!myCheckOut}
+          onClick={handleCheckOut}
+          tone="secondary"
+        />
+      </div>
+      <p className="mt-3 text-center text-base text-ink-subtle">
+        Masuk lewat pukul {LATE_CUTOFF} dihitung Telat.
+      </p>
+    </>
+  );
+
+  const myStatusLine = myCheckIn ? (
+    <p className="mt-4 text-lg text-ink">
+      Anda absen masuk pukul <span className="font-bold tabular-nums">{myCheckIn}</span>
+      {myStatus ? (
+        <span className="ml-2">
+          <AttendanceBadge status={myStatus} />
+        </span>
+      ) : null}
+      {myCheckOut ? (
+        <span>
+          , pulang pukul <span className="font-bold tabular-nums">{myCheckOut}</span>
+        </span>
+      ) : null}
+    </p>
+  ) : null;
 
   return (
     <div>
       <div className="mb-6 flex items-center gap-4">
-        <img src="./logo.png" alt="Logo Sabun Palem" className="h-16 w-16 rounded-card border border-hairline bg-surface object-contain p-1 shadow-card" />
+        <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Logo Sabun Palem" className="h-16 w-16 rounded-card border border-hairline bg-surface object-contain p-1 shadow-card" />
         <div>
-          <h1 className="text-[28px] font-bold leading-tight text-ink">Stok Barang</h1>
-          <p className="text-base text-ink-muted">PT Catur Wangsa Indah</p>
+          <h1 className="text-[28px] font-bold leading-tight text-ink">
+            Selamat datang, {user?.name}
+          </h1>
+          <p className="text-base text-ink-muted">{formatDateID(today)}</p>
         </div>
       </div>
 
-      <div className="space-y-4">
-        <Link
-          to="/scan/masuk"
-          className="entrance btn-press flex min-h-[96px] items-center gap-4 rounded-card bg-success p-5 text-white shadow-card"
-          style={{ animationDelay: '0ms' }}
-        >
-          <ArrowInIcon />
-          <span>
-            <span className="block text-2xl font-bold">Barang Masuk</span>
-            <span className="block text-base font-medium text-white/85">Scan barang yang masuk gudang</span>
-          </span>
-        </Link>
+      {isStaff ? (
+        <div className="space-y-6">
+          {/* HERO STAF: "Saya sudah absen belum?" */}
+          <div className="entrance rounded-card border border-hairline bg-surface p-6 text-center shadow-lift">
+            <h2 className="text-xl font-bold text-ink">Absen saya hari ini</h2>
+            <p className="mt-3 text-5xl font-bold tracking-wide text-primary-deep tabular-nums">{clock}</p>
+            <p className="mt-2 text-base text-ink-muted">Waktu Indonesia Barat (WIB)</p>
+            {myStatusLine}
+            {!myCheckIn ? (
+              <p className="mt-4 text-lg font-bold text-warning-ink">
+                Anda belum absen masuk hari ini.
+              </p>
+            ) : null}
+            {checkInButtons}
+            {myCheckIn ? (
+              <p className="mt-4 text-base text-ink-muted">
+                Jangan lupa lampirkan bukti kerja hari ini di{' '}
+                <Link to="/absensi" className="font-bold text-primary-deep hover:text-primary">
+                  halaman Absensi
+                </Link>
+                .
+              </p>
+            ) : null}
+          </div>
 
-        <Link
-          to="/scan/keluar"
-          className="entrance btn-press flex min-h-[96px] items-center gap-4 rounded-card bg-warning p-5 text-white shadow-card"
-          style={{ animationDelay: '50ms' }}
-        >
-          <ArrowOutIcon />
-          <span>
-            <span className="block text-2xl font-bold">Barang Keluar</span>
-            <span className="block text-base font-medium text-white/85">Scan barang yang keluar gudang</span>
-          </span>
-        </Link>
+          {/* 3 tombol raksasa stok. */}
+          <div className="space-y-4">
+            <Link
+              to="/scan/masuk"
+              className="entrance btn-press flex min-h-[96px] items-center gap-4 rounded-card bg-success p-5 text-white shadow-card"
+              style={{ animationDelay: '50ms' }}
+            >
+              <ArrowInIcon />
+              <span>
+                <span className="block text-2xl font-bold">Barang Masuk</span>
+                <span className="block text-base font-medium text-white/85">Scan barang yang masuk gudang</span>
+              </span>
+            </Link>
 
-        <Link
-          to="/stok"
-          className="entrance btn-press flex min-h-[96px] items-center gap-4 rounded-card bg-info p-5 text-white shadow-card"
-          style={{ animationDelay: '100ms' }}
-        >
-          <ListIcon />
-          <span>
-            <span className="block text-2xl font-bold">Lihat Stok</span>
-            <span className="block text-base font-medium text-white/85">Cek jumlah stok semua barang</span>
-          </span>
-        </Link>
-      </div>
+            <Link
+              to="/scan/keluar"
+              className="entrance btn-press flex min-h-[96px] items-center gap-4 rounded-card bg-warning p-5 text-white shadow-card"
+              style={{ animationDelay: '100ms' }}
+            >
+              <ArrowOutIcon />
+              <span>
+                <span className="block text-2xl font-bold">Barang Keluar</span>
+                <span className="block text-base font-medium text-white/85">Scan barang yang keluar gudang</span>
+              </span>
+            </Link>
 
-      <div
-        className="entrance mt-6 grid grid-cols-3 gap-3"
-        style={{ animationDelay: '150ms' }}
-      >
-        <div className="rounded-card border border-hairline bg-surface p-4 text-center shadow-card">
-          <div className="text-3xl font-bold tabular-nums text-ink">{loading ? '-' : products.length}</div>
-          <div className="mt-1 text-sm font-semibold text-ink-muted">Jenis produk</div>
+            <Link
+              to="/stok"
+              className="entrance btn-press flex min-h-[96px] items-center gap-4 rounded-card bg-info p-5 text-white shadow-card"
+              style={{ animationDelay: '150ms' }}
+            >
+              <ListIcon />
+              <span>
+                <span className="block text-2xl font-bold">Lihat Stok</span>
+                <span className="block text-base font-medium text-white/85">Cek jumlah stok semua barang</span>
+              </span>
+            </Link>
+          </div>
+
+          {/* Rekap saya bulan ini. */}
+          <div className="entrance rounded-card border border-hairline bg-surface p-5 shadow-card" style={{ animationDelay: '200ms' }}>
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-lg font-bold text-ink">Rekap saya bulan ini</h2>
+              <Link to="/absensi" className="text-base font-bold text-primary-deep hover:text-primary">
+                Lihat riwayat absensi saya
+              </Link>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-x-10 gap-y-3">
+              <p className="text-base">
+                <span className="text-2xl font-bold text-success tabular-nums">{myHadir}</span>
+                <span className="ml-2 text-ink-muted">Hadir</span>
+              </p>
+              <p className="text-base">
+                <span className="text-2xl font-bold text-warning tabular-nums">{myTelat}</span>
+                <span className="ml-2 text-ink-muted">Telat</span>
+              </p>
+              <p className="text-base">
+                <span className="text-2xl font-bold text-info tabular-nums">{myIzin}</span>
+                <span className="ml-2 text-ink-muted">Izin / Cuti</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Ringkasan stok. */}
+          <div className="entrance grid grid-cols-3 gap-3" style={{ animationDelay: '250ms' }}>
+            <div className="rounded-card border border-hairline bg-surface p-4 text-center shadow-card">
+              <div className="text-3xl font-bold text-ink tabular-nums">{loading ? '-' : products.length}</div>
+              <div className="mt-1 text-sm font-semibold text-ink-muted">Jenis produk</div>
+            </div>
+            <div className="rounded-card border border-hairline bg-surface p-4 text-center shadow-card">
+              <div className="text-3xl font-bold text-warning tabular-nums">{loading ? '-' : menipisList.length}</div>
+              <div className="mt-1 text-sm font-semibold text-ink-muted">Stok menipis</div>
+            </div>
+            <div className="rounded-card border border-hairline bg-surface p-4 text-center shadow-card">
+              <div className="text-3xl font-bold text-error tabular-nums">{loading ? '-' : habisCount}</div>
+              <div className="mt-1 text-sm font-semibold text-ink-muted">Stok habis</div>
+            </div>
+          </div>
+
+          <p className="text-center text-base text-ink-muted">
+            Total {loading ? '...' : totalUnits.toLocaleString('id-ID')} barang di gudang.
+            Semua barang keluar lewat gerbang gudang, jadi satu scan di sini
+            mencatat semua penjualan, online maupun offline.
+          </p>
         </div>
-        <div className="rounded-card border border-hairline bg-surface p-4 text-center shadow-card">
-          <div className="text-3xl font-bold tabular-nums text-warning">{loading ? '-' : menipis}</div>
-          <div className="mt-1 text-sm font-semibold text-ink-muted">Stok menipis</div>
-        </div>
-        <div className="rounded-card border border-hairline bg-surface p-4 text-center shadow-card">
-          <div className="text-3xl font-bold tabular-nums text-error">{loading ? '-' : habis}</div>
-          <div className="mt-1 text-sm font-semibold text-ink-muted">Stok habis</div>
-        </div>
-      </div>
+      ) : (
+        <div className="space-y-6">
+          {/* HERO MANAGER: "Siapa yang belum absen? Siapa yang telat?" */}
+          <div className="entrance rounded-card border border-hairline bg-surface p-6 shadow-lift">
+            <h2 className="text-xl font-bold text-ink">Perlu perhatian hari ini</h2>
+            <p className="mt-1 text-base text-ink-muted">
+              Karyawan yang belum absen dan yang telat masuk hari ini.
+            </p>
+            <p className="mt-3 rounded-button bg-surface-soft px-4 py-3 text-base text-ink">
+              Bukti kerja: <span className="font-bold text-primary-deep tabular-nums">{withEvidence} dari {presentIds.length}</span> yang
+              hadir sudah melampirkan bukti kerja hari ini.
+            </p>
+            <div className="mt-6 grid gap-8 sm:grid-cols-2">
+              <div>
+                <p className="text-sm font-bold uppercase tracking-wide text-ink-muted">
+                  Belum absen ({belumAbsen.length})
+                </p>
+                {belumAbsen.length === 0 ? (
+                  <p className="mt-3 text-base text-ink-muted">Semua karyawan sudah absen.</p>
+                ) : (
+                  <ul className="mt-2">
+                    {belumAbsen.map((e) => (
+                      <li key={e.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-hairline py-2.5 last:border-0">
+                        <span className="text-base font-bold text-ink">{e.name}</span>
+                        <span className="text-base text-ink-muted">{e.division}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div>
+                <p className="text-sm font-bold uppercase tracking-wide text-ink-muted">
+                  Telat hari ini ({telat})
+                </p>
+                {telatRecords.length === 0 ? (
+                  <p className="mt-3 text-base text-ink-muted">Tidak ada yang telat hari ini.</p>
+                ) : (
+                  <ul className="mt-2">
+                    {telatRecords.map((r) => (
+                      <li key={r.employeeId} className="flex flex-wrap items-center justify-between gap-2 border-b border-hairline py-2.5 last:border-0">
+                        <span className="text-base font-bold text-ink">{employeeName(r.employeeId)}</span>
+                        <span className="text-base text-ink-muted">
+                          masuk <span className="font-bold text-warning-ink tabular-nums">{r.checkIn ?? '-'}</span>
+                          {' · '}{employeeDivision(r.employeeId)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </div>
 
-      <p className="mt-6 text-center text-base text-ink-muted">
-        Total {loading ? '...' : totalUnits.toLocaleString('id-ID')} barang di gudang.
-        Semua barang keluar lewat gerbang gudang, jadi satu scan di sini
-        mencatat semua penjualan, online maupun offline.
-      </p>
+          {/* Ringkasan hari ini: satu baris ringkas. */}
+          <div className="entrance rounded-card border border-hairline bg-surface p-5 shadow-card" style={{ animationDelay: '50ms' }}>
+            <div className="flex flex-wrap gap-x-10 gap-y-3">
+              <p className="text-base">
+                <span className="text-2xl font-bold text-ink tabular-nums">{totalKaryawan}</span>
+                <span className="ml-2 text-ink-muted">Total karyawan</span>
+              </p>
+              <p className="text-base">
+                <span className="text-2xl font-bold text-success tabular-nums">{hadir}</span>
+                <span className="ml-2 text-ink-muted">Hadir</span>
+              </p>
+              <p className="text-base">
+                <span className="text-2xl font-bold text-warning tabular-nums">{telat}</span>
+                <span className="ml-2 text-ink-muted">Telat</span>
+              </p>
+              <p className="text-base">
+                <span className="text-2xl font-bold text-info tabular-nums">{izin}</span>
+                <span className="ml-2 text-ink-muted">Izin / Cuti</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Absen saya: manager juga karyawan, tapi posisinya sekunder. */}
+          <div className="entrance rounded-card border border-hairline bg-surface p-5 shadow-card" style={{ animationDelay: '100ms' }}>
+            <h2 className="text-lg font-bold text-ink">Absen saya</h2>
+            <p className="mt-1 text-base text-ink-muted">
+              <span className="font-bold text-primary-deep tabular-nums">{clock}</span> WIB
+              {myCheckIn ? (
+                <>
+                  {' · masuk '}
+                  <span className="font-bold text-ink tabular-nums">{myCheckIn}</span>
+                  {myStatus ? (
+                    <span className="ml-2">
+                      <AttendanceBadge status={myStatus} />
+                    </span>
+                  ) : null}
+                  {myCheckOut ? (
+                    <span>
+                      {', pulang '}
+                      <span className="font-bold text-ink tabular-nums">{myCheckOut}</span>
+                    </span>
+                  ) : null}
+                </>
+              ) : (
+                ' · Anda belum absen masuk hari ini.'
+              )}
+            </p>
+            {checkInButtons}
+          </div>
+
+          {/* Stok yang menipis. */}
+          <div className="entrance rounded-card border border-hairline bg-surface p-5 shadow-card" style={{ animationDelay: '150ms' }}>
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-lg font-bold text-ink">Stok menipis ({menipisList.length})</h2>
+              <Link to="/stok" className="text-base font-bold text-primary-deep hover:text-primary">
+                Lihat semua stok
+              </Link>
+            </div>
+            {loading ? (
+              <p className="mt-3 text-base text-ink-muted">Memuat stok...</p>
+            ) : menipisList.length === 0 ? (
+              <p className="mt-3 text-base text-ink-muted">Tidak ada stok yang menipis.</p>
+            ) : (
+              <ul className="mt-2">
+                {menipisList.slice(0, 5).map((p) => (
+                  <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-hairline py-2.5 last:border-0">
+                    <span className="text-base font-bold text-ink">{p.name}</span>
+                    <span className="text-base text-ink-muted">
+                      sisa <span className="font-bold text-warning-ink tabular-nums">{totalStock(p)}</span> {p.unit}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-3 text-base text-ink-muted">
+              Total {loading ? '...' : totalUnits.toLocaleString('id-ID')} barang di gudang, {loading ? '...' : products.length} jenis produk.
+            </p>
+          </div>
+
+          {/* Grafik 7 hari terakhir. */}
+          <div className="entrance rounded-card border border-hairline bg-surface p-6 shadow-card" style={{ animationDelay: '200ms' }}>
+            <h2 className="text-lg font-bold text-ink">Berapa yang hadir tiap hari, 7 hari terakhir?</h2>
+            <p className="mt-1 text-base text-ink-muted">
+              Hijau = hadir, oranye = telat, biru = izin/cuti. Angka di atas batang
+              = total yang tercatat hari itu.
+            </p>
+            <div className="mt-6 flex h-48 items-end gap-4">
+              {weekSummary.map((d, i) => {
+                const total = d.hadir + d.telat + d.izin;
+                const hadirH = (d.hadir / maxBar) * 100;
+                const telatH = (d.telat / maxBar) * 100;
+                const izinH = (d.izin / maxBar) * 100;
+                return (
+                  <div key={d.date} className="flex flex-1 flex-col items-center gap-2">
+                    <p className="font-bold tabular-nums text-ink">{total}</p>
+                    <div
+                      className="animate-bar flex w-full max-w-16 flex-col-reverse overflow-hidden rounded-t-md"
+                      style={{ height: '9rem', '--bar-i': i } as React.CSSProperties}
+                    >
+                      <div className="bg-success" style={{ height: `${hadirH}%` }} title={`Hadir: ${d.hadir}`} />
+                      <div className="bg-warning" style={{ height: `${telatH}%` }} title={`Telat: ${d.telat}`} />
+                      <div className="bg-info" style={{ height: `${izinH}%` }} title={`Izin/Cuti: ${d.izin}`} />
+                    </div>
+                    <p className="text-sm font-bold text-ink-muted">{shortDateID(d.date)}</p>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-6 text-sm font-bold text-ink-muted">
+              <span className="flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-success" /> Hadir</span>
+              <span className="flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-warning" /> Telat</span>
+              <span className="flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-info" /> Izin / Cuti</span>
+            </div>
+          </div>
+
+          {/* Jalan pintas ke Karyawan dan Laporan (untuk manager di HP,
+              yang tidak melihat sidebar). */}
+          <div className="entrance grid grid-cols-2 gap-3 md:hidden" style={{ animationDelay: '250ms' }}>
+            <Link
+              to="/karyawan"
+              className="btn-press flex min-h-[72px] items-center justify-center rounded-card border border-hairline bg-surface text-lg font-bold text-ink shadow-card"
+            >
+              Karyawan
+            </Link>
+            <Link
+              to="/laporan"
+              className="btn-press flex min-h-[72px] items-center justify-center rounded-card border border-hairline bg-surface text-lg font-bold text-ink shadow-card"
+            >
+              Laporan
+            </Link>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
