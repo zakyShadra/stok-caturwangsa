@@ -1,0 +1,1 @@
+{"dependencies":{"hono":"^4"},"devDependencies":{"@cloudflare/workers-types":"^5","typescript":"^5","wrangler":"^4"},"name":"stok-sabun-palem-worker","private":true,"scripts":{"build":"tsc --noEmit","deploy":"wrangler deploy","dev":"wrangler dev"},"type":"module"}

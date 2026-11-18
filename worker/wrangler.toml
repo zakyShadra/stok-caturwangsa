@@ -1,0 +1,13 @@
+name = "stok-sabun-palem"
+main = "src/index.ts"
+compatibility_date = "2025-11-01"
+
+# ID sheet TIDAK sensitif (hanya pengenal), jadi disimpan sebagai var
+# biasa di sini. Yang rahasia (email + private key service account)
+# TIDAK BOLEH masuk file ini; keduanya disimpan sebagai Worker secrets:
+#   wrangler secret put SHEETS_CLIENT_EMAIL
+#   wrangler secret put SHEETS_PRIVATE_KEY
+# Lihat scripts/setup-secrets.sh dan docs/migrasi-akun.md.
+[vars]
+SHEET_ID = "1SRXE0Ma1VXO_W1DJJ1GISM0Tmcnbr9w8eGyBrQj2IhA"
+ALLOWED_ORIGINS = "https://zakyshadra.github.io,http://localhost:5173"
