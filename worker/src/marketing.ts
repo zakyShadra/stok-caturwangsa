@@ -33,7 +33,9 @@ const MONTH_NAMES_ID = [
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
 ];
 
-// Tanggal di Sheet format "02-Jun-2026" (singkatan bulan Inggris).
+// Tanggal di Sheet format "02-Jun-2026", tapi singkatannya campuran:
+// Inggris (Jun, Jul, Sep, Nov) dan Indonesia (Agu, Okt, Mei, Des),
+// jadi parseSheetDate menerima keduanya.
 const MONTH_EN: Record<string, number> = {
   Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6,
   Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12,
@@ -85,12 +87,14 @@ function parseRp(value: string | undefined): number {
   return (negative ? -1 : 1) * Number(digits);
 }
 
-// "02-Jun-2026" -> { year: 2026, month: 6, day: 2 }.
+// "02-Jun-2026" -> { year: 2026, month: 6, day: 2 }. Singkatan bulan
+// bisa Inggris (Aug, Oct) atau Indonesia (Agu, Okt): keduanya
+// dipakai analis di kolom Tanggal.
 function parseSheetDate(value: string | undefined): { year: number; month: number; day: number } | null {
   if (!value) return null;
   const m = /^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/.exec(value.trim());
   if (!m) return null;
-  const month = MONTH_EN[m[2]];
+  const month = MONTH_EN[m[2]] ?? MONTH_ID[m[2]];
   if (!month) return null;
   return { day: Number(m[1]), month, year: Number(m[3]) };
 }
