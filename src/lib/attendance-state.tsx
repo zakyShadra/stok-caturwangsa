@@ -1,10 +1,11 @@
 // State absensi yang dipakai bersama Beranda, halaman Absensi, dan
 // Laporan: catatan absen, jam absen masuk/pulang saya, bukti kerja,
-// dan bukti verifikasi (lokasi GPS + selfie) tiap karyawan. Semua
-// masih di memori (belum ada backend): absen yang dicatat lewat
-// aplikasi hilang kalau halaman di-refresh, kecuali status absen
-// saya hari ini yang disimpan di localStorage. Nanti data ini
-// tinggal di Workers + D1, file di-upload ke R2.
+// dan bukti verifikasi (lokasi GPS + selfie) tiap karyawan.
+// Penyimpanan sementara (belum ada backend): status absen saya hari
+// ini dan verifikasi selfie (GPS + foto) disimpan di localStorage,
+// supaya tidak hilang kalau halaman di-refresh. Bukti kerja masih
+// di memori saja: filenya belum bisa disimpan.
+// Nanti data ini tinggal di Workers + D1, file di-upload ke R2.
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
@@ -143,12 +144,37 @@ function saveCheckIn(saved: SavedCheckIn) {
   }
 }
 
+// --- Verifikasi absen (GPS + selfie): disimpan supaya fotonya tetap
+// tampil setelah halaman di-refresh. Hanya untuk tanggal hari ini. ---
+const VERIF_KEY = 'sabunpalem-verifikasi-hari-ini';
+
+function loadVerification(): Record<number, EmployeeVerification> {
+  const seed = seedVerification();
+  try {
+    const raw = localStorage.getItem(VERIF_KEY);
+    if (!raw) return seed;
+    const parsed = JSON.parse(raw) as { date?: string; byEmployee?: Record<number, EmployeeVerification> };
+    if (parsed.date !== jakartaDate(0)) return seed;
+    return { ...seed, ...(parsed.byEmployee ?? {}) };
+  } catch {
+    return seed;
+  }
+}
+
+function saveVerification(byEmployee: Record<number, EmployeeVerification>) {
+  try {
+    localStorage.setItem(VERIF_KEY, JSON.stringify({ date: jakartaDate(0), byEmployee }));
+  } catch {
+    // localStorage penuh: abaikan, foto di memori tetap tampil sesi ini.
+  }
+}
+
 export function AttendanceProvider({ children }: { children: ReactNode }) {
   const [saved, setSaved] = useState<SavedCheckIn>(loadCheckIn);
   const [records, setRecords] = useState<AttendanceRecord[]>(() => getAttendance());
   const [evidenceByEmployee, setEvidenceByEmployee] = useState<Record<number, EvidenceFile[]>>(seedEvidence);
   const [verificationByEmployee, setVerificationByEmployee] =
-    useState<Record<number, EmployeeVerification>>(seedVerification);
+    useState<Record<number, EmployeeVerification>>(loadVerification);
 
   const myCheckIn = saved.checkIn;
   const myCheckOut = saved.checkOut;
@@ -180,10 +206,14 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       saveCheckIn(next);
       if (employeeId !== null) {
         upsertRecord({ employeeId, date: today, checkIn: time, checkOut: null, status });
-        setVerificationByEmployee((prev) => ({
-          ...prev,
-          [employeeId]: { ...(prev[employeeId] ?? {}), masuk: { ...v, time } },
-        }));
+        setVerificationByEmployee((prev) => {
+          const nextV = {
+            ...prev,
+            [employeeId]: { ...(prev[employeeId] ?? {}), masuk: { ...v, time } },
+          };
+          saveVerification(nextV);
+          return nextV;
+        });
       }
     },
     [upsertRecord],
@@ -204,10 +234,14 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
             r.employeeId === employeeId && r.date === today ? { ...r, checkOut: time } : r,
           ),
         );
-        setVerificationByEmployee((prev) => ({
-          ...prev,
-          [employeeId]: { ...(prev[employeeId] ?? {}), pulang: { ...v, time } },
-        }));
+        setVerificationByEmployee((prev) => {
+          const nextV = {
+            ...prev,
+            [employeeId]: { ...(prev[employeeId] ?? {}), pulang: { ...v, time } },
+          };
+          saveVerification(nextV);
+          return nextV;
+        });
       }
     },
     [],

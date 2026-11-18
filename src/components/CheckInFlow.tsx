@@ -5,6 +5,10 @@
 //   jalan pintas.
 // - Selfie: input file dengan capture="user" membuka kamera depan
 //   langsung di HP. Foto dicek dulu di preview sebelum dikonfirmasi.
+//   Foto disimpan sebagai data URL JPEG yang diperkecil (maks 640px),
+//   BUKAN object URL: object URL mati begitu halaman di-refresh, dan
+//   cleanup unmount dulu sempat mencabut URL yang baru disimpan,
+//   sehingga foto selfie tampil rusak di halaman Absensi.
 // Ditampilkan sebagai overlay layar penuh (portal ke body), karena
 // wrapper halaman punya transform animasi yang merusak position:fixed.
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -46,6 +50,48 @@ function getPosition(): Promise<GeolocationPosition> {
   });
 }
 
+// Ubah file foto jadi data URL JPEG yang diperkecil (sisi terpanjang
+// maks 640px, kualitas 0.82), supaya muat disimpan di localStorage.
+// Foto kamera HP asli bisa beberapa MB; tanpa diperkecil, localStorage
+// (kuota sekitar 5 MB) bisa penuh hanya oleh satu foto. Kalau gambar
+// gagal dibaca atau digambar, fallback ke data URL asli dari FileReader.
+function fileToDataUrl(file: File): Promise<string> {
+  const readRaw = () =>
+    new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  if (!file.type.startsWith('image/')) return readRaw();
+  return new Promise((resolve) => {
+    const tempUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(tempUrl);
+      const MAX = 640;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        void readRaw().then(resolve);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(tempUrl);
+      void readRaw().then(resolve);
+    };
+    img.src = tempUrl;
+  });
+}
+
 export default function CheckInFlow({ type, onComplete, onCancel }: Props) {
   const [step, setStep] = useState<Step>({ kind: 'locating' });
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -83,33 +129,28 @@ export default function CheckInFlow({ type, onComplete, onCancel }: Props) {
     checkLocation();
   }, [checkLocation]);
 
-  // Bersihkan object URL foto kalau komponen ditutup.
-  useEffect(() => {
-    return () => {
-      if (step.kind === 'preview' && step.url.startsWith('blob:')) {
-        URL.revokeObjectURL(step.url);
-      }
-    };
-  }, [step]);
-
   const handleFile = (files: FileList | null) => {
     if (!files || files.length === 0 || step.kind !== 'selfie') return;
     const file = files[0];
-    const url = URL.createObjectURL(file);
-    setStep({
-      kind: 'preview',
-      lat: step.lat,
-      lon: step.lon,
-      distanceMeters: step.distanceMeters,
-      url,
-      name: file.name,
+    const { lat, lon, distanceMeters } = step;
+    // Foto dibaca dulu jadi data URL, baru pindah ke preview. Selama
+    // membaca, tetap di langkah selfie (prosesnya sepersekian detik).
+    void fileToDataUrl(file).then((url) => {
+      if (!url) return;
+      setStep({
+        kind: 'preview',
+        lat,
+        lon,
+        distanceMeters,
+        url,
+        name: file.name,
+      });
     });
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleRetake = () => {
     if (step.kind !== 'preview') return;
-    if (step.url.startsWith('blob:')) URL.revokeObjectURL(step.url);
     setStep({ kind: 'selfie', lat: step.lat, lon: step.lon, distanceMeters: step.distanceMeters });
   };
 

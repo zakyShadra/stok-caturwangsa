@@ -17,8 +17,38 @@ import {
 import type { CheckVerification, EvidenceFile } from '../lib/attendance';
 import { AttendanceBadge, BigButton, EmptyState, PageHeader } from '../components/ui';
 
+function PersonIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-primary-deep">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21c0-4 3.6-6 8-6s8 2 8 6" />
+    </svg>
+  );
+}
+
+// Thumbnail selfie absen: ketuk untuk memperbesar. Kalau foto tidak
+// ada atau gagal dimuat, tampilkan placeholder, bukan ikon rusak.
+// Thumbnail dibuat shrink-0 supaya tidak pernah menumpuk teks.
+function SelfieThumb({ url, label, onView }: { url: string | null | undefined; label: string; onView: () => void }) {
+  const [failed, setFailed] = useState(false);
+  if (!url || failed) {
+    return (
+      <div className="flex h-14 w-20 shrink-0 flex-col items-center justify-center rounded-control bg-primary-soft/50 px-1 text-center">
+        <PersonIcon />
+        <span className="text-sm font-bold leading-tight text-primary-deep">Tidak ada foto</span>
+      </div>
+    );
+  }
+  return (
+    <button type="button" onClick={onView} aria-label={`Perbesar ${label}`} className="shrink-0">
+      <img src={url} alt={label} onError={() => setFailed(true)} className="h-14 w-20 rounded-control object-cover" />
+    </button>
+  );
+}
+
 // Satu file bukti: thumbnail kalau gambar (ketuk untuk memperbesar),
 // ikon dokumen kalau bukan gambar (ketuk untuk membuka file).
+// Foto yang gagal dimuat jadi ikon dokumen, bukan ikon rusak.
 function EvidenceItem({
   file,
   onView,
@@ -28,13 +58,15 @@ function EvidenceItem({
   onView: () => void;
   onRemove?: () => void;
 }) {
+  const [failed, setFailed] = useState(false);
   return (
     <div className="flex items-center gap-3 rounded-button border border-hairline bg-surface p-2">
-      {file.kind === 'image' && file.url ? (
-        <button type="button" onClick={onView} aria-label={`Lihat ${file.name}`}>
+      {file.kind === 'image' && file.url && !failed ? (
+        <button type="button" onClick={onView} aria-label={`Lihat ${file.name}`} className="shrink-0">
           <img
             src={file.url}
-            alt={file.name}
+            alt={`Foto bukti kerja ${file.name}`}
+            onError={() => setFailed(true)}
             className="h-14 w-20 rounded-control object-cover"
           />
         </button>
@@ -70,12 +102,43 @@ function EvidenceItem({
   );
 }
 
+// Satu baris verifikasi absen: selfie + jam + jarak dari kantor.
+// Dipakai di kartu karyawan dan di antrean persetujuan.
+function VerificationRow({
+  label,
+  data,
+  employeeName,
+  onView,
+}: {
+  label: string;
+  data: CheckVerification;
+  employeeName: string;
+  onView: (url: string, label: string) => void;
+}) {
+  const selfieLabel = `Selfie absen ${label.toLowerCase()} ${employeeName}`;
+  return (
+    <div className="flex items-center gap-3 rounded-button border border-hairline bg-surface p-2">
+      <SelfieThumb
+        url={data.selfieUrl}
+        label={selfieLabel}
+        onView={() => data.selfieUrl && onView(data.selfieUrl, selfieLabel)}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="text-base font-bold text-ink">
+          {label} {data.time} · {data.distanceMeters} m dari kantor
+        </p>
+        <p className="truncate text-sm text-ink-muted">{data.selfieName}</p>
+      </div>
+    </div>
+  );
+}
+
 export default function Attendance() {
   const { user } = useAuth();
   const isStaff = user?.role === 'Staff';
   const { records, upsertRecord, myCheckIn, evidenceByEmployee, verificationByEmployee, addEvidence, removeEvidence } = useAttendanceState();
   const [selectedDate, setSelectedDate] = useState(jakartaDate(0));
-  const [lightbox, setLightbox] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<{ url: string; label: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form tandai izin/cuti (Admin/Bos/Manager): disembunyikan di balik
@@ -141,11 +204,13 @@ export default function Attendance() {
   const viewFile = (file: EvidenceFile) => {
     if (!file.url) return;
     if (file.kind === 'image') {
-      setLightbox(file.url);
+      setLightbox({ url: file.url, label: `Foto bukti kerja ${file.name}` });
     } else {
       window.open(file.url, '_blank', 'noopener');
     }
   };
+
+  const viewLightbox = (url: string, label: string) => setLightbox({ url, label });
 
   return (
     <div>
@@ -360,27 +425,13 @@ export default function Attendance() {
                       return (
                         <div className="mt-2 space-y-2">
                           {items.map(({ label, data }) => (
-                            <div key={label} className="flex items-center gap-3 rounded-button border border-hairline bg-surface p-2">
-                              {data.selfieUrl ? (
-                                <button
-                                  type="button"
-                                  onClick={() => setLightbox(data.selfieUrl)}
-                                  aria-label={`Lihat selfie ${label} ${employeeName(r.employeeId)}`}
-                                >
-                                  <img
-                                    src={data.selfieUrl}
-                                    alt={`Selfie ${label}`}
-                                    className="h-14 w-20 rounded-control object-cover"
-                                  />
-                                </button>
-                              ) : null}
-                              <div className="min-w-0 flex-1">
-                                <p className="text-base font-bold text-ink">
-                                  {label} {data.time} · {data.distanceMeters} m dari kantor
-                                </p>
-                                <p className="truncate text-sm text-ink-muted">{data.selfieName}</p>
-                              </div>
-                            </div>
+                            <VerificationRow
+                              key={label}
+                              label={label}
+                              data={data}
+                              employeeName={employeeName(r.employeeId)}
+                              onView={viewLightbox}
+                            />
                           ))}
                         </div>
                       );
@@ -422,20 +473,22 @@ export default function Attendance() {
         ))}
       </div>
 
-      {/* Lightbox: perbesar foto bukti kerja. Dirender lewat portal ke body,
-          karena wrapper halaman punya transform (animasi page-enter) yang
-          membuat position:fixed di dalamnya relatif ke halaman, bukan layar. */}
+      {/* Lightbox: perbesar foto selfie absen atau bukti kerja. Labelnya
+          mengikuti jenis foto (bukan selalu "Foto bukti kerja").
+          Dirender lewat portal ke body, karena wrapper halaman punya
+          transform (animasi page-enter) yang membuat position:fixed
+          di dalamnya relatif ke halaman, bukan layar. */}
       {lightbox
         ? createPortal(
             <div
               className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
               onClick={() => setLightbox(null)}
               role="dialog"
-              aria-label="Foto bukti kerja diperbesar"
+              aria-label={`${lightbox.label} diperbesar`}
             >
               <img
-                src={lightbox}
-                alt="Foto bukti kerja"
+                src={lightbox.url}
+                alt={lightbox.label}
                 className="max-h-full max-w-full rounded-card object-contain"
                 onClick={(e) => e.stopPropagation()}
               />

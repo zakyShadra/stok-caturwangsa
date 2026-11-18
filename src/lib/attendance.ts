@@ -94,13 +94,15 @@ export function haversineDistanceMeters(
 
 // Bukti verifikasi satu kali absen: lokasi GPS + foto selfie.
 // Disimpan bersama catatan absen, dilihat Bos/Manager di halaman
-// Absensi. Saat ini di memori saja (belum ada backend); nanti
-// selfie di-upload ke Workers + R2, koordinat dicatat di log.
+// Absensi. Selfie disimpan sebagai data URL JPEG yang diperkecil
+// (maks 640px), jadi fotonya tetap tampil setelah halaman
+// di-refresh. Nanti selfie di-upload ke Workers + R2, koordinat
+// dicatat di log.
 export interface CheckVerification {
   lat: number;
   lon: number;
   distanceMeters: number; // jarak dari kantor saat absen
-  selfieUrl: string | null; // object URL foto selfie (atau data URL)
+  selfieUrl: string | null; // data URL foto selfie (bukan object URL)
   selfieName: string;
   time: string; // HH:MM
 }
