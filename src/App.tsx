@@ -9,6 +9,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import type { JSX } from 'react';
 import { AuthProvider, useAuth } from './lib/auth';
+import { canViewMarketing } from './lib/attendance';
 import { AttendanceProvider } from './lib/attendance-state';
 import { StockProvider } from './lib/store';
 import Layout from './components/Layout';
@@ -36,6 +37,16 @@ function RequireManagement({ children }: { children: JSX.Element }) {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
   if (user.role === 'Staff') return <Navigate to="/" replace />;
+  return children;
+}
+
+// Pemasaran: manajemen + karyawan yang ditandai canViewMarketing
+// (lihat canViewMarketing di attendance.ts). Yang tidak berhak
+// dialihkan ke Beranda.
+function RequireMarketing({ children }: { children: JSX.Element }) {
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  if (!canViewMarketing(user)) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -85,20 +96,22 @@ export default function App() {
               <Route path="scan/:type" element={<Scan />} />
               <Route path="stok" element={<Stock />} />
               <Route path="riwayat" element={<History />} />
-              {/* Pemasaran: semua role (Staff yang minta, Bos/Manager
-                  juga butuh melihat grafik penjualan). */}
+              {/* Pemasaran: manajemen + karyawan yang ditandai
+                  canViewMarketing (Dyas, data analyst). */}
               <Route
                 path="pemasaran"
                 element={
-                  <Suspense
-                    fallback={
-                      <p className="rounded-card border border-hairline bg-surface p-6 text-center text-lg text-ink-muted">
-                        Memuat grafik...
-                      </p>
-                    }
-                  >
-                    <Marketing />
-                  </Suspense>
+                  <RequireMarketing>
+                    <Suspense
+                      fallback={
+                        <p className="rounded-card border border-hairline bg-surface p-6 text-center text-lg text-ink-muted">
+                          Memuat grafik...
+                        </p>
+                      }
+                    >
+                      <Marketing />
+                    </Suspense>
+                  </RequireMarketing>
                 }
               />
               <Route path="akun" element={<Account />} />

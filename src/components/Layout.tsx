@@ -4,8 +4,11 @@
 // Sidebar punya satu pill yang BERJALAN ke item aktif (code-xr pola 6):
 // posisinya diukur dari DOM item aktif, digerakkan dengan transform.
 import { useLayoutEffect, useRef, useState } from 'react';
+import type { ComponentType } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
+import { canViewMarketing } from '../lib/attendance';
+import type { Role, User } from '../lib/attendance';
 import BottomNav from './BottomNav';
 
 function IconHome() {
@@ -108,8 +111,19 @@ function IconLogout() {
 // small-caps + padding, bukan garis divider. Karyawan muncul untuk
 // Admin/Bos/Manager (hanya Admin yang mengelola; Bos/Manager melihat
 // saja); Laporan untuk Admin/Bos/Manager; Staff tidak melihat keduanya.
-// Pemasaran untuk semua role.
-const NAV_GROUPS = [
+// Pemasaran untuk manajemen + karyawan yang ditandai canViewMarketing
+// (Dyas, data analyst): aturan tampilnya kustom (visible), bukan
+// sekadar daftar roles.
+interface NavItem {
+  to: string;
+  label: string;
+  Icon: ComponentType;
+  roles: Role[];
+  // Aturan tampil kustom; kalau ada, menggantikan cek roles.
+  visible?: (user: User) => boolean;
+}
+
+const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: 'Utama',
     items: [
@@ -136,7 +150,7 @@ const NAV_GROUPS = [
   {
     label: 'Pemasaran',
     items: [
-      { to: '/pemasaran', label: 'Pemasaran', Icon: IconTrend, roles: ['Admin', 'Bos', 'Manager', 'Staff'] },
+      { to: '/pemasaran', label: 'Pemasaran', Icon: IconTrend, roles: ['Admin', 'Bos', 'Manager'], visible: canViewMarketing },
     ],
   },
 ];
@@ -183,7 +197,7 @@ export default function Layout() {
       window.removeEventListener('resize', measure);
       nav?.removeEventListener('scroll', measure);
     };
-  }, [activePath, user?.role]);
+  }, [activePath, user?.role, user?.employeeId]);
 
   const handleLogout = () => {
     logout();
@@ -219,7 +233,9 @@ export default function Layout() {
             aria-hidden="true"
           />
           {NAV_GROUPS.map((group) => {
-            const items = group.items.filter((item) => user && item.roles.includes(user.role));
+            const items = group.items.filter(
+              (item) => user && (item.visible ? item.visible(user) : item.roles.includes(user.role)),
+            );
             if (items.length === 0) return null;
             return (
               <div key={group.label} className="relative">

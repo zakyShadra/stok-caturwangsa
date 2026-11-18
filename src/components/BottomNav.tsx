@@ -1,10 +1,14 @@
-// Navigasi bawah mobile: 6 item (Beranda, Absensi, Stok, Riwayat,
-// Pemasaran, Akun). Satu pill yang BERJALAN ke item aktif (code-xr
-// pola 1), bukan tiap item menyala sendiri. Posisi diukur dari DOM,
-// digerakkan dengan transform, 0.45s cubic-bezier(.22,1,.36,1).
+// Navigasi bawah mobile: 5-6 item (Beranda, Absensi, Stok, Riwayat,
+// [Pemasaran], Akun). Pemasaran disembunyikan untuk staf tanpa flag
+// canViewMarketing, grid menyesuaikan (5 vs 6 kolom). Satu pill yang
+// BERJALAN ke item aktif (code-xr pola 1), bukan tiap item menyala
+// sendiri. Posisi diukur dari DOM, digerakkan dengan transform,
+// 0.45s cubic-bezier(.22,1,.36,1).
 // Label 13px supaya "Pemasaran" muat dalam satu baris di HP 360px.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
+import { useAuth } from '../lib/auth';
+import { canViewMarketing } from '../lib/attendance';
 
 const ITEMS = [
   { to: '/', label: 'Beranda', icon: HomeIcon },
@@ -73,16 +77,23 @@ function PersonIcon({ active }: { active: boolean }) {
 
 export default function BottomNav() {
   const location = useLocation();
+  const { user } = useAuth();
   // Ref di grid dalam (max-w-720, di tengah), BUKAN di nav luar
   // (lebar penuh): pill diposisikan relatif terhadap grid ini,
   // jadi pengukurannya harus terhadap grid yang sama.
   const gridRef = useRef<HTMLDivElement>(null);
   const [pill, setPill] = useState({ left: 0, width: 0, ready: false });
 
+  // Pemasaran hanya untuk manajemen + karyawan yang ditandai
+  // canViewMarketing; staf lain tidak melihat itemnya.
+  const visibleItems = ITEMS.filter(
+    (item) => item.to !== '/pemasaran' || canViewMarketing(user),
+  );
+
   // -1 kalau halaman ini tidak ada di nav bawah (Karyawan, Laporan):
   // pill disembunyikan dan tidak ada item yang menyala, supaya nav
   // tidak menunjuk Beranda secara salah.
-  const activeIndex = ITEMS.findIndex((item) => item.to === location.pathname);
+  const activeIndex = visibleItems.findIndex((item) => item.to === location.pathname);
 
   useLayoutEffect(() => {
     const measure = () => {
@@ -111,7 +122,7 @@ export default function BottomNav() {
       window.removeEventListener('resize', measure);
       observer.disconnect();
     };
-  }, [activeIndex]);
+  }, [activeIndex, visibleItems.length]);
 
   // Halaman scan tidak pakai nav bawah: layarnya penuh untuk kamera.
   const onScanPage = location.pathname.startsWith('/scan');
@@ -127,7 +138,7 @@ export default function BottomNav() {
       className="fixed inset-x-0 bottom-0 z-40 border-t border-hairline bg-surface/95 backdrop-blur-sm"
       aria-label="Navigasi utama"
     >
-      <div ref={gridRef} className="relative mx-auto grid max-w-[720px] grid-cols-6">
+      <div ref={gridRef} className={`relative mx-auto grid max-w-[720px] ${visibleItems.length === 5 ? 'grid-cols-5' : 'grid-cols-6'}`}>
         <div
           aria-hidden="true"
           className="pointer-events-none absolute top-2 h-[calc(100%-16px)] rounded-button bg-primary-soft/70 transition-all duration-500"
@@ -138,7 +149,7 @@ export default function BottomNav() {
             transitionTimingFunction: 'cubic-bezier(.22,1,.36,1)',
           }}
         />
-        {ITEMS.map((item, i) => {
+        {visibleItems.map((item, i) => {
           const active = i === activeIndex;
           const Icon = item.icon;
           return (

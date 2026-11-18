@@ -45,6 +45,10 @@ export interface Employee {
   position: string;
   phone: string;
   active: boolean;
+  // Boleh melihat menu Pemasaran (omset). Hanya untuk karyawan yang
+  // memang butuh angka penjualan, misal data analyst. BUKAN role
+  // baru: role = level izin, jabatan = atribut.
+  canViewMarketing?: boolean;
 }
 
 export interface AttendanceRecord {
@@ -98,12 +102,25 @@ export const USERS: User[] = [
 // jadi tidak ada data lama yang terikat ke ID karyawan ini.
 export const EMPLOYEES: Employee[] = [
   { id: 1, name: 'Putra', division: 'Umum', position: 'Staff', phone: '', active: true },
-  { id: 2, name: 'Dyas Nakata', division: 'Umum', position: 'Staff', phone: '', active: true },
+  { id: 2, name: 'Dyas Nakata', division: 'Umum', position: 'Staff', phone: '', active: true, canViewMarketing: true },
   { id: 3, name: 'Pak Andy', division: 'Umum', position: 'Staff', phone: '', active: true },
   { id: 4, name: 'Maya Putri', division: 'Admin', position: 'Staff Administrasi', phone: '0817-6789-0123', active: true },
   { id: 5, name: 'Zaky Shadra', division: 'IT', position: 'Admin', phone: '', active: true },
   { id: 6, name: 'Ibu Abe', division: 'Manajemen', position: 'Manager', phone: '', active: true },
 ];
+
+// Akses menu Pemasaran: semua manajemen (Admin/Bos/Manager) +
+// karyawan yang ditandai canViewMarketing (saat ini hanya Dyas
+// Nakata, data analyst yang meminta menu ini). Role = level izin,
+// jabatan = atribut: kalau nanti ada analis lain, tandai flag-nya,
+// jangan bikin role baru. Cara ini mencegah role explosion saat
+// scale-up (satu role per jabatan = kelas peran yang meledak).
+export function canViewMarketing(user: User | null): boolean {
+  if (!user) return false;
+  if (user.role !== 'Staff') return true;
+  if (user.employeeId === null) return false;
+  return EMPLOYEES.find((e) => e.id === user.employeeId)?.canViewMarketing === true;
+}
 
 // Karyawan yang bisa melampirkan bukti kerja: hanya karyawan yang
 // punya akun Staff. Admin/Manager tidak punya tombol upload bukti,
