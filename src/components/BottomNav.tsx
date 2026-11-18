@@ -1,7 +1,7 @@
-// Navigasi bawah mobile: 4 item (Beranda, Absensi, Stok, Riwayat).
-// Satu pill yang BERJALAN ke item aktif (code-xr pola 1), bukan tiap
-// item menyala sendiri. Posisi diukur dari DOM, digerakkan dengan
-// transform, 0.45s cubic-bezier(.22,1,.36,1).
+// Navigasi bawah mobile: 5 item (Beranda, Absensi, Stok, Riwayat,
+// Akun). Satu pill yang BERJALAN ke item aktif (code-xr pola 1),
+// bukan tiap item menyala sendiri. Posisi diukur dari DOM, digerakkan
+// dengan transform, 0.45s cubic-bezier(.22,1,.36,1).
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 
@@ -10,6 +10,7 @@ const ITEMS = [
   { to: '/absensi', label: 'Absensi', icon: ClipboardIcon },
   { to: '/stok', label: 'Stok', icon: BoxIcon },
   { to: '/riwayat', label: 'Riwayat', icon: ClockIcon },
+  { to: '/akun', label: 'Akun', icon: PersonIcon },
 ];
 
 function HomeIcon({ active }: { active: boolean }) {
@@ -46,6 +47,15 @@ function ClockIcon({ active }: { active: boolean }) {
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={active ? '#0F6F72' : '#5A6B76'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+
+function PersonIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={active ? '#0F6F72' : '#5A6B76'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21a8 8 0 0 1 16 0" />
     </svg>
   );
 }
@@ -106,7 +116,7 @@ export default function BottomNav() {
       className="fixed inset-x-0 bottom-0 z-40 border-t border-hairline bg-surface/95 backdrop-blur-sm"
       aria-label="Navigasi utama"
     >
-      <div ref={gridRef} className="relative mx-auto grid max-w-[720px] grid-cols-4">
+      <div ref={gridRef} className="relative mx-auto grid max-w-[720px] grid-cols-5">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute top-2 h-[calc(100%-16px)] rounded-button bg-primary-soft/70 transition-all duration-500"
