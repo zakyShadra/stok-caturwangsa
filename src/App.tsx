@@ -43,11 +43,22 @@ function RequireManagement({ children }: { children: JSX.Element }) {
 
 // Pemasaran: manajemen + karyawan yang punya capability
 // 'view-marketing' (lihat canViewMarketing di attendance.ts). Yang
-// tidak berhak dialihkan ke Beranda.
+// tidak berhak dialihkan ke Beranda. Keputusan menunggu daftar
+// karyawan dari server selesai dimuat: daftar awal (seed statis)
+// bisa sudah kedaluwarsa, misal capability yang baru dicentang
+// Admin belum ada di seed, dan mengalihkan sebelum muat selesai
+// akan salah mengusir karyawan yang sebenarnya berhak.
 function RequireMarketing({ children }: { children: JSX.Element }) {
   const { user } = useAuth();
-  const { employees } = useEmployees();
+  const { employees, loading } = useEmployees();
   if (!user) return <Navigate to="/login" replace />;
+  if (loading) {
+    return (
+      <p className="rounded-card border border-hairline bg-surface p-6 text-center text-lg text-ink-muted">
+        Memuat...
+      </p>
+    );
+  }
   if (!canViewMarketing(user, employees)) return <Navigate to="/" replace />;
   return children;
 }
