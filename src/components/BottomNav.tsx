@@ -4,7 +4,10 @@
 // BERJALAN ke item aktif (code-xr pola 1), bukan tiap item menyala
 // sendiri. Posisi diukur dari DOM, digerakkan dengan transform,
 // 0.45s cubic-bezier(.22,1,.36,1).
-// Label 13px supaya "Pemasaran" muat dalam satu baris di HP 360px.
+// Pill ngikutin LEBAR TEKS label (diukur dari span label, bukan sel
+// link): label "Pemasaran" lebih lebar dari selnya di HP 360px, jadi
+// pill yang ngikutin sel membuat teks keluar dari pill. Label 12px
+// supaya teksnya tetap muat dalam satu baris.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
@@ -107,6 +110,21 @@ export default function BottomNav() {
       const link = grid.querySelectorAll('a')[activeIndex] as HTMLElement | undefined;
       if (!link) return;
       const gridRect = grid.getBoundingClientRect();
+      // Pill ngikutin lebar TEKS label (span di dalam link), bukan
+      // lebar sel link: teks "Pemasaran" lebih lebar dari selnya,
+      // jadi pill selebar sel membuat teks tembus keluar pill.
+      // Padding 6px tiap sisi supaya teks tidak menempel ke tepi pill.
+      const labelEl = link.querySelector('span');
+      const pad = 6;
+      if (labelEl) {
+        const labelRect = labelEl.getBoundingClientRect();
+        setPill({
+          left: labelRect.left - gridRect.left - pad,
+          width: labelRect.width + pad * 2,
+          ready: true,
+        });
+        return;
+      }
       const linkRect = link.getBoundingClientRect();
       setPill({
         left: linkRect.left - gridRect.left,
@@ -145,8 +163,8 @@ export default function BottomNav() {
           aria-hidden="true"
           className="pointer-events-none absolute top-2 h-[calc(100%-16px)] rounded-button bg-primary-soft/70 transition-all duration-500"
           style={{
-            transform: `translateX(${pill.left + 6}px)`,
-            width: Math.max(0, pill.width - 12),
+            transform: `translateX(${pill.left}px)`,
+            width: pill.width,
             opacity: pill.ready ? 1 : 0,
             transitionTimingFunction: 'cubic-bezier(.22,1,.36,1)',
           }}
@@ -162,7 +180,7 @@ export default function BottomNav() {
               aria-current={active ? 'page' : undefined}
             >
               <Icon active={active} />
-              <span className={`whitespace-nowrap text-[13px] font-bold leading-tight ${active ? 'text-primary-deep' : 'text-ink-muted'}`}>
+              <span className={`whitespace-nowrap text-[12px] font-bold leading-tight ${active ? 'text-primary-deep' : 'text-ink-muted'}`}>
                 {item.label}
               </span>
             </NavLink>
