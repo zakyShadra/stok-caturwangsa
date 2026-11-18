@@ -59,13 +59,12 @@ export default function Marketing() {
     <div>
       <PageHeader
         title="Pemasaran"
-        subtitle="Penjualan offline dari spreadsheet Analisis, dibaca live setiap halaman dibuka."
         action={
           <button
             type="button"
             onClick={() => void load()}
             disabled={loading}
-            className="btn-press min-h-[48px] rounded-button border border-hairline bg-surface px-4 text-base font-bold text-primary-deep disabled:opacity-50"
+            className="btn-press min-h-[40px] shrink-0 rounded-button border border-hairline bg-surface px-3 text-sm font-bold text-primary-deep disabled:opacity-50"
           >
             {loading ? 'Memuat...' : 'Muat ulang'}
           </button>
@@ -112,9 +111,6 @@ export default function Marketing() {
           {/* Grafik 1: bulanan */}
           <section className="entrance rounded-card border border-hairline bg-surface p-5 shadow-card">
             <h2 className="text-xl font-bold text-ink">Penjualan vs Kas Masuk per bulan</h2>
-            <p className="mt-1 text-base text-ink-muted">
-              Selisih keduanya adalah penjualan yang belum dibayar pelanggan.
-            </p>
             {data.monthly.length === 0 ? (
               <p className="py-8 text-center text-lg text-ink-muted">
                 Belum ada data transaksi di Sheet.
@@ -124,12 +120,6 @@ export default function Marketing() {
                 <div className="mt-4">
                   <MonthlySalesChart data={data.monthly} />
                 </div>
-                {partialMonths.length > 0 ? (
-                  <p className="mt-3 text-base text-ink-muted">
-                    * {partialMonths.map((m) => `${m.label} (data tanggal 1-${m.daysCovered} saja)`).join(', ')}:
-                    bulan belum penuh, jangan dibandingkan mentah dengan bulan penuh.
-                  </p>
-                ) : null}
                 <div className="mt-4 overflow-x-auto">
                   <table className="w-full text-left text-base">
                     <thead>
@@ -202,8 +192,17 @@ export default function Marketing() {
             )}
           </section>
 
+          {/* Satu baris kecil: catatan bulan parsial + sumber data +
+              waktu baca terakhir. Sebelumnya dua baris terpisah
+              (footnote di bawah grafik + footer), menumpuk di HP. */}
           <p className="text-center text-sm text-ink-muted">
-            Data live dari spreadsheet Analisis Penjualan Offline 2026 (hanya penjualan offline).
+            {partialMonths.length > 0 ? (
+              <>
+                * {partialMonths.map((m) => `${m.label} (data tanggal 1-${m.daysCovered} saja)`).join(', ')}:
+                bulan belum penuh.{' '}
+              </>
+            ) : null}
+            Data live dari spreadsheet Analisis (hanya penjualan offline).
             Terakhir dibaca: {formatWib(data.updatedAt)} WIB.
           </p>
         </div>
