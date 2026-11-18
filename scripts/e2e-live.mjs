@@ -92,7 +92,11 @@ if (logAfter !== logBefore + 1) errors.push(`baris log ${logBefore} -> ${logAfte
 const logRes = await fetch(`${API}/api/log`);
 const log = await logRes.json();
 const last = log[0];
-console.log(`Transaksi terakhir: ${last.id} ${last.productId} ${last.type} ${last.qty} ${last.location} ${last.note}`);
+console.log(`Transaksi terakhir: ${last.id} ${last.productId} ${last.type} ${last.qty} ${last.location} ${last.note} sisa=${last.stockAfter}`);
+// Sisa berjalan harus sama dengan total stok produk setelah scan.
+if (last.stockAfter !== after.total) errors.push(`sisa log terbaru ${last.stockAfter}, harus ${after.total}`);
+// Log terbaru harus transaksi yang baru dibuat (sheet terbaru di atas).
+if (last.productId !== 'dwl-palem-jerigen' || last.type !== 'keluar' || last.qty !== 1) errors.push('log terbaru bukan transaksi scan barusan');
 const undoRes = await fetch(`${API}/api/scan/undo`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },

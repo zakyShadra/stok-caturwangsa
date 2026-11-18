@@ -36,6 +36,28 @@ export interface Transaction {
 
 export type StockStatus = 'aman' | 'menipis' | 'habis';
 
+// Stok akhir satu produk pada satu tanggal + selisih dibanding hari
+// sebelumnya. null berarti tanggalnya belum lewat (ditampilkan kosong,
+// bukan 0, supaya tidak dikira stoknya habis).
+export interface DayStock {
+  day: number;
+  stock: number | null;
+  delta: number | null;
+}
+
+export interface MonthlyProduct {
+  id: string;
+  name: string;
+  unit: string;
+  daily: DayStock[];
+}
+
+export interface MonthlyData {
+  month: string; // YYYY-MM
+  days: number;
+  products: MonthlyProduct[];
+}
+
 export function totalStock(p: Product): number {
   return p.stock.klinik + p.stock['gudang-kantor'] + p.stock.kantor;
 }

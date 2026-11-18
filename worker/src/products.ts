@@ -1,5 +1,5 @@
 // Katalog produk. Salinan dari data aplikasi (src/lib/products.ts),
-// sumbernya tab RESUME sheet perusahaan. Worker memakai katalog ini
+// sumbernya tab info_produk sheet perusahaan. Worker memakai katalog ini
 // untuk validasi server-side: produk harus ada, barcode harus cocok.
 // Stok TIDAK disimpan di sini; stok selalu dibaca dari tab Stok Terkini.
 export interface CatalogProduct {

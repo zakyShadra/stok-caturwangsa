@@ -1,4 +1,4 @@
-// Data produk ASLI dari tab RESUME sheet "SO Detail" perusahaan
+// Data produk ASLI dari tab info_produk sheet "SO Detail" perusahaan
 // (clone dev: "SO Detail - COPY DEV (Stok Sabun Palem)").
 // Kuantitas = hasil stock opname terakhir. Pembagian per lokasi mengikuti
 // pola tab Agustus 2026: sebagian besar di Gudang Klinik, sebagian kecil

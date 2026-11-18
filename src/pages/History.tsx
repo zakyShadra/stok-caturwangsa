@@ -1,17 +1,25 @@
 // Riwayat transaksi. Kolomnya meniru kartu kertas asli:
 // Tanggal, Keterangan, Masuk, Keluar, Sisa.
+// Tampilan kedua "Per Hari": stok akhir tiap produk per tanggal.
 import { useMemo, useState } from 'react';
 import { EmptyState, PageHeader, SegmentedControl } from '../components/ui';
+import MonthlyTable from '../components/MonthlyTable';
 import { useStock } from '../lib/store';
 import { locationLabel } from '../lib/types';
 import type { MoveType } from '../lib/types';
 
 type Filter = 'semua' | MoveType;
+type View = 'transaksi' | 'perhari';
 
 const FILTERS: { id: Filter; label: string }[] = [
   { id: 'semua', label: 'Semua' },
   { id: 'masuk', label: 'Masuk' },
   { id: 'keluar', label: 'Keluar' },
+];
+
+const VIEWS: { id: View; label: string }[] = [
+  { id: 'transaksi', label: 'Transaksi' },
+  { id: 'perhari', label: 'Per Hari' },
 ];
 
 // Zona waktu perusahaan: WIB. Dipakai eksplisit supaya jam yang tampil
@@ -30,6 +38,7 @@ function formatTime(iso: string): string {
 
 export default function History() {
   const { products, log, loading } = useStock();
+  const [view, setView] = useState<View>('transaksi');
   const [filter, setFilter] = useState<Filter>('semua');
 
   const nameOf = (productId: string) =>
@@ -50,21 +59,32 @@ export default function History() {
       />
 
       <SegmentedControl
-        options={FILTERS}
-        value={filter}
-        onChange={setFilter}
-        label="Filter jenis pergerakan"
+        options={VIEWS}
+        value={view}
+        onChange={setView}
+        label="Tampilan riwayat"
       />
 
-      {loading ? (
-        <p className="py-10 text-center text-lg text-ink-muted">Memuat riwayat...</p>
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          title="Belum ada riwayat"
-          body="Transaksi akan muncul di sini setelah ada barang yang di-scan masuk atau keluar."
-        />
+      {view === 'perhari' ? (
+        <MonthlyTable />
       ) : (
-        <div className="space-y-3">
+        <>
+          <SegmentedControl
+            options={FILTERS}
+            value={filter}
+            onChange={setFilter}
+            label="Filter jenis pergerakan"
+          />
+
+          {loading ? (
+            <p className="py-10 text-center text-lg text-ink-muted">Memuat riwayat...</p>
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              title="Belum ada riwayat"
+              body="Transaksi akan muncul di sini setelah ada barang yang di-scan masuk atau keluar."
+            />
+          ) : (
+            <div className="space-y-3">
           {filtered.map((t, i) => (
             <article
               key={t.id}
@@ -115,7 +135,9 @@ export default function History() {
               </div>
             </article>
           ))}
-        </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

@@ -129,28 +129,75 @@ export async function readRange(env: SheetsEnv, range: string): Promise<string[]
   return data.values ?? [];
 }
 
-// Tambah baris di akhir tab. valueInputOption RAW: nilai disimpan
-// persis seperti dikirim (timestamp ISO tetap teks, tidak diubah Sheets).
-// Mengembalikan range baris yang ditulis, misal "'Log Transaksi'!A73:H73".
-export async function appendRows(
+// ID numerik tab Log Transaksi di spreadsheet (dari spreadsheets.get).
+// Dibutuhkan insertDimension; stabil selama tab tidak dihapus dan
+// dibuat ulang.
+const LOG_SHEET_ID = 2034344698;
+
+// Panggil spreadsheets.batchUpdate dengan daftar request mentah
+// (insertDimension, addSheet, repeatCell, dan lain-lain).
+export async function batchUpdateSheets(
+  env: SheetsEnv,
+  requests: unknown[],
+): Promise<{ replies?: { addSheet?: { properties?: { sheetId?: number } } }[] }> {
+  return (await sheetsFetch(env, ':batchUpdate', {
+    method: 'POST',
+    body: JSON.stringify({ requests }),
+  })) as { replies?: { addSheet?: { properties?: { sheetId?: number } } }[] };
+}
+
+// Tulis nilai ke satu range A1. valueInputOption USER_ENTERED membuat
+// Sheets mengurai isi seperti diketik di UI (rumus jadi rumus, tanggal
+// jadi tanggal); RAW menyimpan persis seperti dikirim.
+export async function updateValues(
   env: SheetsEnv,
   range: string,
   values: (string | number)[][],
-): Promise<string> {
-  const data = (await sheetsFetch(
+  valueInputOption: 'RAW' | 'USER_ENTERED',
+): Promise<void> {
+  await sheetsFetch(
     env,
-    `/values/${encodeURIComponent(range)}:append` +
-      '?valueInputOption=RAW&insertDataOption=INSERT_ROWS',
+    `/values/${encodeURIComponent(range)}?valueInputOption=${valueInputOption}`,
     {
-      method: 'POST',
+      method: 'PUT',
       body: JSON.stringify({ values }),
     },
-  )) as { updates?: { updatedRange?: string } };
-  return data.updates?.updatedRange ?? '';
+  );
 }
 
-// Ambil nomor baris dari updatedRange hasil append ("...!A73:H73" -> 73).
-export function rowNumberFromRange(updatedRange: string): number | null {
-  const match = /!A(\d+):/.exec(updatedRange);
-  return match ? Number(match[1]) : null;
+// Daftar judul semua tab di spreadsheet (untuk cek duplikat sebelum
+// membuat tab bulanan baru).
+export async function getSheetTitles(env: SheetsEnv): Promise<string[]> {
+  const data = (await sheetsFetch(
+    env,
+    '?fields=sheets.properties.title',
+  )) as { sheets?: { properties?: { title?: string } }[] };
+  return (data.sheets ?? []).map((s) => s.properties?.title ?? '');
+}
+
+// Sisipkan baris baru tepat di bawah header (baris 2), sehingga baris
+// terbaru selalu paling atas. Kolom A-H ditulis dengan RAW (timestamp
+// ISO tetap teks), kolom I (Tanggal) ditulis terpisah dengan
+// USER_ENTERED supaya Sheets menyimpannya sebagai nilai tanggal asli
+// (diperlukan rumus SUMIFS bulanan). tanggalWib format YYYY-MM-DD.
+export async function insertRowAtTop(
+  env: SheetsEnv,
+  values: (string | number)[][],
+  tanggalWib: string,
+): Promise<void> {
+  await batchUpdateSheets(env, [
+    {
+      insertDimension: {
+        range: {
+          sheetId: LOG_SHEET_ID,
+          dimension: 'ROWS',
+          startIndex: 1,
+          endIndex: 2,
+        },
+        inheritFromBefore: false,
+      },
+    },
+  ]);
+  await updateValues(env, "'Log Transaksi'!A2:H2", values, 'RAW');
+  await updateValues(env, "'Log Transaksi'!I2", [[tanggalWib]], 'USER_ENTERED');
 }

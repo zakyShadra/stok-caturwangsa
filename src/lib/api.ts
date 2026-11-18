@@ -6,12 +6,13 @@
 // Komponen lain tidak perlu tahu sumbernya; bentuk fungsinya sama.
 //
 // Endpoint Workers:
-//   POST /api/scan       -> catat satu pergerakan (append ke Sheet Log)
-//   POST /api/scan/undo  -> batalkan transaksi (baris koreksi di Log)
+//   POST /api/scan       -> catat satu pergerakan (sisip di baris 2 Log)
+//   POST /api/scan/undo  -> batalkan transaksi (baris koreksi di baris 2 Log)
 //   GET  /api/stock      -> daftar produk + stok terkini (baca Sheet Stok)
 //   GET  /api/log        -> riwayat transaksi (baca Sheet Log)
+//   GET  /api/monthly    -> stok akhir tiap produk per tanggal (?month=YYYY-MM)
 import { buildInitialTransactions, PRODUCTS } from './products';
-import type { LocationId, MoveType, Product, Transaction } from './types';
+import type { LocationId, MonthlyData, MoveType, Product, Transaction } from './types';
 
 export interface ScanInput {
   barcode: string | null; // null kalau pilih manual (produk tanpa barcode)
@@ -50,6 +51,10 @@ const remoteApi = {
 
   async getLog(): Promise<Transaction[]> {
     return remoteFetch<Transaction[]>('/api/log');
+  },
+
+  async getMonthly(month: string): Promise<MonthlyData> {
+    return remoteFetch<MonthlyData>(`/api/monthly?month=${encodeURIComponent(month)}`);
   },
 
   async recordScan(input: ScanInput): Promise<{ product: Product; tx: Transaction }> {
@@ -94,6 +99,62 @@ const localApi = {
     return [...logState];
   },
 
+  // GET /api/monthly: hitung dari log memori dengan logika yang sama
+  // seperti Worker (stok awal + pergerakan per tanggal, WIB).
+  async getMonthly(month: string): Promise<MonthlyData> {
+    await delay(120);
+    const [year, monthNum] = month.split('-').map(Number);
+    const days = new Date(Date.UTC(year, monthNum, 0)).getUTCDate();
+    const monthStart = `${month}-01`;
+    const monthEnd = `${month}-${String(days).padStart(2, '0')}`;
+    const todayWib = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Jakarta',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+    const tanggalOf = (iso: string) =>
+      new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Jakarta',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date(iso));
+    return {
+      month,
+      days,
+      products: productsState.map((p) => {
+        const mine = logState.filter((t) => t.productId === p.id);
+        let running = 0;
+        for (const t of mine) {
+          if (tanggalOf(t.timestamp) < monthStart) {
+            running += t.type === 'masuk' ? t.qty : -t.qty;
+          }
+        }
+        const netByDay = new Map<number, number>();
+        for (const t of mine) {
+          const d = tanggalOf(t.timestamp);
+          if (d >= monthStart && d <= monthEnd) {
+            const day = Number(d.slice(8, 10));
+            netByDay.set(day, (netByDay.get(day) ?? 0) + (t.type === 'masuk' ? t.qty : -t.qty));
+          }
+        }
+        const daily = [];
+        for (let d = 1; d <= days; d++) {
+          const dateKey = `${month}-${String(d).padStart(2, '0')}`;
+          if (dateKey > todayWib) {
+            daily.push({ day: d, stock: null, delta: null });
+            continue;
+          }
+          const delta = netByDay.get(d) ?? 0;
+          running += delta;
+          daily.push({ day: d, stock: running, delta });
+        }
+        return { id: p.id, name: p.name, unit: p.unit, daily };
+      }),
+    };
+  },
+
   // POST /api/scan
   async recordScan(input: ScanInput): Promise<{ product: Product; tx: Transaction }> {
     await delay(200);
@@ -122,8 +183,8 @@ const localApi = {
   },
 
   // Undo transaksi terakhir (untuk tombol Batalkan di layar sukses).
-  // Versi jarak jauh append baris koreksi ke Sheet Log, bukan hapus
-  // baris lama (audit trail tetap utuh). Versi lokal menghapus dari
+  // Versi jarak jauh menyisipkan baris koreksi di baris 2 Sheet Log,
+  // bukan hapus baris lama (audit trail tetap utuh). Versi lokal menghapus dari
   // memori karena tidak ada sheet yang perlu dijaga.
   async undoLast(txId: string): Promise<void> {
     await delay(150);
