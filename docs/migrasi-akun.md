@@ -6,11 +6,12 @@ kode aplikasi.
 
 ## Yang perlu dipahami dulu
 
-Backend ini terdiri dari 3 bagian yang terikat ke akun:
+Backend ini terdiri dari 4 bagian yang terikat ke akun:
 
 | Bagian | Terikat ke akun | Saat migrasi |
 | --- | --- | --- |
 | Cloudflare Worker | Akun Cloudflare tempat deploy | Deploy ulang dari akun kantor |
+| Database D1 | Akun Cloudflare tempat dibuat | Buat baru di akun kantor, terapkan skema (Langkah 3b) |
 | Service account Google | Project Google Cloud tempat dibuat | Buat baru di project kantor |
 | Spreadsheet | Pemilik sheet | Tetap sama, hanya dibagikan ke service account baru |
 
@@ -68,15 +69,50 @@ wrangler deploy
 
 Catat URL Worker yang tampil setelah deploy selesai.
 
+## Langkah 3b: Buat database D1 di akun kantor
+
+Database absensi + karyawan (D1) tidak ikut pindah bersama kode
+Worker. Buat baru di akun kantor, dari folder `worker/`:
+
+```sh
+npx wrangler d1 create sabun-palem-absen
+npx wrangler d1 execute sabun-palem-absen --remote --file=schema.sql
+```
+
+Perintah pertama menampilkan database ID baru. Salin ID itu ke
+`worker/wrangler.toml` (field `database_id` di blok
+`[[d1_databases]]`), commit, lalu deploy ulang Worker
+(`wrangler deploy`).
+
+Perhatian: data absensi dan karyawan TIDAK ikut pindah otomatis.
+Database baru mulai kosong; daftar karyawan akan terisi otomatis
+dari 5 karyawan awal saat pertama kali dibuka (seed), tapi riwayat
+absen lama tidak ikut. Kalau riwayat lama harus pindah, ekspor dulu
+dari D1 lama (`wrangler d1 export`) dan impor ke yang baru sebelum
+aplikasi dipakai.
+
 ## Langkah 4: Perbarui URL Worker di aplikasi
 
 URL Worker berubah saat pindah akun, karena bagian belakang
 `workers.dev` mengikuti nama akun Cloudflare. Nama Worker-nya sama
 (`stok-sabun-palem`), tapi subdomainnya beda.
 
-1. Buka file `.github/workflows/deploy-pages.yml`.
-2. Ubah nilai `VITE_API_URL` ke URL Worker yang baru.
-3. Commit dan push. GitHub Pages akan build ulang otomatis.
+Ada dua tempat deploy aplikasi, keduanya perlu URL baru:
+
+1. **GitHub Pages** (otomatis): buka file
+   `.github/workflows/deploy-pages.yml`, ubah nilai
+   `VITE_API_URL` ke URL Worker yang baru, commit dan push.
+   GitHub Pages akan build ulang otomatis.
+2. **Cloudflare Pages** (manual): build ulang dan deploy dari
+   laptop dengan URL baru:
+
+```sh
+VITE_API_URL=https://stok-sabun-palem.<akun-baru>.workers.dev npm run build:pages
+npx wrangler pages deploy dist --project-name caturwangsa
+```
+
+Domain caturwangsa.ices.my.id adalah CNAME ke caturwangsa.pages.dev,
+jadi tidak perlu diubah selama nama project Pages-nya sama.
 
 ## Langkah 5: Tes
 
