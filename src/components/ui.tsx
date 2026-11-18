@@ -58,6 +58,39 @@ export function PageHeader({ title, subtitle, action }: { title: string; subtitl
   );
 }
 
+// Kontrol segmen: pilihan eksklusif (Semua / Masuk / Keluar) dalam satu
+// baris, tidak pernah bungkus ke dua baris. Di HP lebar penuh (segmen
+// bagi rata), di desktop menyusut mengikuti isi. Dipakai untuk filter
+// Riwayat dan Stok, menggantikan chip terpisah yang bungkus tidak rata.
+export function SegmentedControl<T extends string>({ options, value, onChange, label }: {
+  options: { id: T; label: string }[];
+  value: T;
+  onChange: (v: T) => void;
+  label: string;
+}) {
+  return (
+    <div
+      className="mb-5 flex w-full rounded-full border border-hairline bg-surface p-1 shadow-card sm:inline-flex sm:w-auto"
+      role="group"
+      aria-label={label}
+    >
+      {options.map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          onClick={() => onChange(o.id)}
+          aria-pressed={value === o.id}
+          className={`btn-press min-h-[44px] flex-1 whitespace-nowrap rounded-full px-4 text-base font-bold transition-colors ${
+            value === o.id ? 'bg-primary text-white' : 'text-ink hover:bg-surface-soft'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 interface BigButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   tone?: 'primary' | 'success' | 'warning' | 'info' | 'secondary' | 'danger';
   full?: boolean;
@@ -121,7 +154,7 @@ export function LocationPicker({ value, onChange }: { value: LocationId; onChang
             role="radio"
             aria-checked={active}
             onClick={() => onChange(loc.id)}
-            className={`btn-press min-h-[56px] rounded-button border px-2 py-3 text-base font-bold transition-colors ${
+            className={`btn-press min-h-[56px] rounded-button border px-1 py-3 text-[15px] font-bold transition-colors ${
               active
                 ? 'border-primary bg-primary text-white'
                 : 'border-hairline bg-surface text-ink hover:bg-surface-soft'

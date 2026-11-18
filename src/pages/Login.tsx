@@ -89,10 +89,10 @@ export default function Login() {
                 key={u.email}
                 type="button"
                 onClick={() => fillAccount(u.email, u.password)}
-                className="btn-press flex min-h-[56px] w-full items-center gap-3 rounded-button border border-hairline bg-surface-soft px-4 text-left transition-colors hover:bg-primary-soft/40"
+                className="btn-press flex min-h-[56px] w-full flex-col items-start justify-center gap-0.5 rounded-button border border-hairline bg-surface-soft px-4 text-left transition-colors hover:bg-primary-soft/40"
               >
-                <span className="text-lg font-bold text-primary-deep">{u.role}</span>
-                <span className="text-base text-ink-muted">{u.email}</span>
+                <span className="text-lg font-bold leading-tight text-primary-deep">{u.role}</span>
+                <span className="text-sm leading-tight text-ink-muted">{u.email}</span>
               </button>
             ))}
           </div>

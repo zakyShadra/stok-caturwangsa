@@ -58,15 +58,18 @@ export default function BottomNav() {
   const gridRef = useRef<HTMLDivElement>(null);
   const [pill, setPill] = useState({ left: 0, width: 0, ready: false });
 
-  const activeIndex = Math.max(
-    0,
-    ITEMS.findIndex((item) => item.to === location.pathname),
-  );
+  // -1 kalau halaman ini tidak ada di nav bawah (Karyawan, Laporan):
+  // pill disembunyikan dan tidak ada item yang menyala, supaya nav
+  // tidak menunjuk Beranda secara salah.
+  const activeIndex = ITEMS.findIndex((item) => item.to === location.pathname);
 
   useLayoutEffect(() => {
     const measure = () => {
       const grid = gridRef.current;
-      if (!grid) return;
+      if (!grid || activeIndex < 0) {
+        setPill((p) => ({ ...p, ready: false }));
+        return;
+      }
       const link = grid.querySelectorAll('a')[activeIndex] as HTMLElement | undefined;
       if (!link) return;
       const gridRect = grid.getBoundingClientRect();
