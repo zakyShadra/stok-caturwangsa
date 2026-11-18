@@ -5,9 +5,10 @@ karyawan dan stok barang gudang. Absensi dibangun ulang dari nol
 di dalam aplikasi stok (dashboard absensi lama sudah diarsip),
 dengan bahasa desain yang sama, supaya satu app terasa konsisten.
 
-- Absensi: absen masuk/pulang, tandai Izin/Cuti, bukti kerja
-  harian (foto/dokumen yang dilampirkan staf), daftar karyawan,
-  laporan rekap.
+- Absensi: absen masuk/pulang (GPS + selfie), pengajuan Izin/Cuti
+  oleh staf, persetujuan absensi oleh Bos (Setujui/Tolak), bukti kerja
+  harian (foto/dokumen yang dilampirkan staf), daftar karyawan
+  (Admin saja), laporan rekap (hanya yang sudah disetujui).
 - Stok: scan barcode di gerbang gudang, sistem catat Masuk/Keluar,
   stok dihitung otomatis dari log transaksi. Menggantikan kartu
   kertas "KARTU PERSEDIAAN BARANG" dan stock opname manual.
@@ -111,8 +112,8 @@ Hadir hijau, Telat oranye, Izin/Cuti biru.
 - Di desktop, sidebar kiri 240px teal gelap, grup UTAMA (Beranda),
   ABSENSI (Absensi, Karyawan, Laporan), STOK (Barang Masuk,
   Barang Keluar, Lihat Stok, Riwayat). Satu pill berjalan menandai
-  item aktif, posisinya diukur dari DOM. Karyawan dan Laporan
-  hanya muncul untuk Admin, Bos, dan Manager. Sidebar menempel di
+  item aktif, posisinya diukur dari DOM. Karyawan hanya muncul untuk
+  Admin; Laporan untuk Admin, Bos, dan Manager. Sidebar menempel di
   viewport (sticky, tinggi penuh layar): area nav bergeser sendiri
   kalau isinya lebih tinggi dari layar, dan footer (nama pengguna
   + tombol Keluar) selalu menempel di bawah viewport, tidak
@@ -123,6 +124,10 @@ Hadir hijau, Telat oranye, Izin/Cuti biru.
   yang kontras jelas (putih solid di footer sidebar gelap, tombol
   utama penuh di halaman Akun). Tanpa dialog konfirmasi: masuk
   lagi cuma satu ketuk lewat tombol akun cepat di Login.
+- Footer: di bawah konten tiap halaman (kecuali halaman scan):
+  garis hairline + "© {tahun} PT Catur Wangsa Indah. All rights
+  reserved." rata tengah, teks 14px muted, tahun dinamis. Di HP,
+  padding bawah konten menjaga footer tetap di atas BottomNav.
 - Padding konten: 20px mobile, 32px desktop.
 - Gap antar kartu: 16px. Gap antar section: 32px.
 - Beranda staf: kartu "Absen saya hari ini" di atas (jam live
@@ -131,20 +136,25 @@ Hadir hijau, Telat oranye, Izin/Cuti biru.
   masing-masing tinggi 96px, ikon + label teks besar. Di bawahnya
   rekap saya bulan ini dan ringkasan stok.
 - Beranda Admin/Bos/Manager: panel "Perlu perhatian hari ini"
-  (belum absen, telat, bukti kerja yang belum dilampirkan),
-  baris statistik, stok menipis. Bos tidak absen.
+  (belum absen, telat, bukti kerja yang belum dilampirkan, absen
+  yang menunggu persetujuan Bos), baris statistik, stok menipis.
+  Bos tidak absen.
 - Absensi: kartu bukti kerja di atas untuk staf (tombol
   "Lampirkan File" setelah absen masuk, thumbnail + nama file +
-  tombol Hapus). Untuk Admin/Bos/Manager: baris "Bukti kerja:
-  X dari Y yang hadir sudah melampirkan", form tandai Izin/Cuti,
-  lalu kartu per karyawan (nama, divisi, badge status, jam
-  Masuk/Pulang, bukti kerja tiap karyawan yang bisa diketuk
-  untuk diperbesar lewat lightbox).
-- Karyawan: kartu per karyawan (nama, jabatan, divisi, no HP,
-  badge Aktif, tombol Ubah/Hapus), form tambah/ubah di atas.
+  tombol Hapus) dan form pengajuan Izin/Cuti. Untuk Admin/Bos/
+  Manager: antrean "Menunggu persetujuan" (Bos: tombol Setujui/
+  Tolak di tiap catatan; Manager/Admin: status saja), baris
+  "Bukti kerja: X dari Y yang hadir sudah melampirkan", lalu kartu
+  per karyawan (nama, divisi, badge status + badge persetujuan,
+  jam Masuk/Pulang, bukti kerja tiap karyawan yang bisa diketuk
+  untuk diperbesar lewat lightbox, selfie absen dengan jam dan
+  jarak dari kantor).
+- Karyawan (Admin saja): kartu per karyawan (nama, jabatan, divisi,
+  no HP, badge Aktif, tombol Ubah/Hapus), form tambah/ubah di atas.
 - Laporan: pemilih rentang tanggal, tombol Unduh CSV, kalimat
   ringkasan periode, kartu per karyawan (Telat/Hadir/Izin/Total,
-  urut dari yang paling sering telat).
+  urut dari yang paling sering telat). Hanya catatan yang sudah
+  disetujui Bos yang dihitung; yang pending tampil terpisah.
 - Scan: kamera memenuhi layar dengan kotak viewfinder di tengah
   (kotak 280x160px, sudut tebal, garis scan). Di bawah kamera:
   tombol "Cari Manual" dan tombol senter. Setelah scan: kartu
@@ -189,11 +199,11 @@ Hadir hijau, Telat oranye, Izin/Cuti biru.
    + ringkasan stok. Admin/Bos/Manager: panel perhatian +
    statistik + stok menipis. Bos tidak absen.
 3. **Absensi** - staf: kartu bukti kerja (upload setelah absen
-   masuk) + pilih tanggal + kartu absen saya. Admin/Bos/Manager:
-   pilih tanggal + hitungan bukti kerja + form tandai Izin/Cuti
-   + kartu per karyawan dengan bukti kerjanya dan selfie absen
-   (jam + jarak dari kantor, ketuk thumbnail untuk memperbesar).
-   Rekap bulanan di bawah.
+   masuk) + form pengajuan Izin/Cuti + pilih tanggal + kartu absen
+   saya. Admin/Bos/Manager: antrean persetujuan + pilih tanggal +
+   hitungan bukti kerja + kartu per karyawan dengan bukti kerjanya
+   dan selfie absen (jam + jarak dari kantor, ketuk thumbnail untuk
+   memperbesar). Rekap bulanan di bawah (hanya yang disetujui).
    **Flow absen (CheckInFlow):** overlay layar penuh, 2 langkah
    bertahap. Langkah 1 cek lokasi GPS (radius 200 m dari kantor
    Jl. Peta No. 71, Bandung; di luar radius ditolak tanpa jalan
@@ -201,11 +211,22 @@ Hadir hijau, Telat oranye, Izin/Cuti biru.
    2 foto selfie kamera depan, preview dengan tombol "Ini Foto
    Saya" / "Foto Ulang". Berlaku untuk Absen Masuk dan Absen
    Pulang. Pesan error Bahasa Indonesia sederhana, tanpa istilah
-   teknis.
-4. **Karyawan** (Admin/Bos/Manager) - daftar karyawan, tambah/
-   ubah/hapus.
+   teknis. Selfie disimpan sebagai data URL JPEG yang diperkecil
+   (maks 640px), supaya fotonya tetap tampil setelah halaman
+   di-refresh (object URL mati saat refresh).
+   **Persetujuan absensi:** tiap catatan absen berstatus pending,
+   approved, atau rejected. Check-in baru dan pengajuan Izin/Cuti
+   baru berstatus pending. Bos menyetujui/menolak dari antrean di
+   halaman Absensi (atau dari kartu karyawan). Rekap dan laporan
+   hanya menghitung yang approved; yang rejected tidak dihitung dan
+   karyawannya kembali ke "Belum absen" (harus absen ulang). Status
+   absen saya disimpan per akun (kunci localStorage memakai email),
+   bukan per perangkat, supaya ganti akun tidak saling menukar
+   status absen.
+4. **Karyawan** (Admin saja) - daftar karyawan, tambah/
+   ubah/hapus. Peran lain dialihkan ke Beranda kalau membuka rute ini.
 5. **Laporan** (Admin/Bos/Manager) - rentang tanggal, unduh CSV,
-   rekap per karyawan.
+   rekap per karyawan. Hanya yang sudah disetujui yang dihitung.
 6. **Scan Masuk / Scan Keluar** - kamera + viewfinder, tombol
    Cari Manual, tombol senter. Setelah scan: kartu produk, stepper
    jumlah, pilih lokasi (Gudang Klinik / Gudang Kantor / Kantor),
@@ -239,6 +260,9 @@ Hadir hijau, Telat oranye, Izin/Cuti biru.
 - Do: filter pilihan eksklusif (Semua / Masuk / Keluar) pakai
   SegmentedControl (ui.tsx), satu baris, tidak pernah bungkus.
   Chip terpisah yang bungkus tidak rata dilarang untuk filter.
+- Do: angka stok atau riwayat yang gagal dimuat tampil sebagai
+  pesan error + tombol "Coba lagi", bukan angka 0. Stok dan riwayat
+  dimuat terpisah (allSettled): satu gagal tidak membuang yang lain.
 - Do: nilai kosong tampil konsisten dengan warna ink-subtle: jumlah
   kosong tampil "0", jam kosong tampil "-". Jangan biarkan tanda
   hubung " - " menggantung di ujung baris: meta multi-bagian dipecah
