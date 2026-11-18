@@ -103,14 +103,26 @@ Hadir hijau, Telat oranye, Izin/Cuti biru.
 
 - Mobile-first, konten max-width 720px di tengah (bukan 1200px:
   ini aplikasi kerja satu tangan, bukan dashboard kantor).
-- Navigasi bawah (bottom nav) di mobile, 4 item: Beranda, Absensi,
-  Stok, Riwayat. Item aktif ditandai satu pill yang berjalan
-  (code-xr pola 1), bukan tiap item menyala sendiri.
+- Navigasi bawah (bottom nav) di mobile, 5 item: Beranda, Absensi,
+  Stok, Riwayat, Akun. Item aktif ditandai satu pill yang berjalan
+  (code-xr pola 1), bukan tiap item menyala sendiri. Item Akun
+  membuka halaman Akun (nama + peran + tombol Keluar), karena di HP
+  tidak ada sidebar tempat tombol Keluar tinggal.
 - Di desktop, sidebar kiri 240px teal gelap, grup UTAMA (Beranda),
   ABSENSI (Absensi, Karyawan, Laporan), STOK (Barang Masuk,
   Barang Keluar, Lihat Stok, Riwayat). Satu pill berjalan menandai
   item aktif, posisinya diukur dari DOM. Karyawan dan Laporan
-  hanya muncul untuk Admin, Bos, dan Manager.
+  hanya muncul untuk Admin, Bos, dan Manager. Sidebar menempel di
+  viewport (sticky, tinggi penuh layar): area nav bergeser sendiri
+  kalau isinya lebih tinggi dari layar, dan footer (nama pengguna
+  + tombol Keluar) selalu menempel di bawah viewport, tidak
+  terkubur di bawah halaman panjang. Pill diukur ulang saat nav
+  digeser, supaya tidak melenceng.
+- Tombol Keluar: selalu kelihatan tanpa scroll, di semua ukuran
+  layar. Tinggi minimal 44px, ikon + label teks "Keluar", latar
+  yang kontras jelas (putih solid di footer sidebar gelap, tombol
+  utama penuh di halaman Akun). Tanpa dialog konfirmasi: masuk
+  lagi cuma satu ketuk lewat tombol akun cepat di Login.
 - Padding konten: 20px mobile, 32px desktop.
 - Gap antar kartu: 16px. Gap antar section: 32px.
 - Beranda staf: kartu "Absen saya hari ini" di atas (jam live
@@ -207,6 +219,9 @@ Hadir hijau, Telat oranye, Izin/Cuti biru.
    mirip kartu kertas: Tanggal, Keterangan, Masuk, Keluar, Sisa.
    Tampilan kedua "Per Hari": stok akhir tiap produk per tanggal
    dalam sebulan, dengan selisih harian.
+10. **Akun** - nama, peran, dan email pengguna yang sedang masuk,
+    plus satu tombol Keluar besar (lebar penuh, ikon + label).
+    Satu layar satu tugas: halaman ini hanya untuk keluar.
 
 ## Do's and Don'ts
 

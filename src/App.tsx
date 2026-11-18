@@ -17,6 +17,7 @@ import Reports from './pages/Reports';
 import Scan from './pages/Scan';
 import Stock from './pages/Stock';
 import History from './pages/History';
+import Account from './pages/Account';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user } = useAuth();
@@ -74,6 +75,7 @@ export default function App() {
               <Route path="scan/:type" element={<Scan />} />
               <Route path="stok" element={<Stock />} />
               <Route path="riwayat" element={<History />} />
+              <Route path="akun" element={<Account />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

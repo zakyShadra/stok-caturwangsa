@@ -85,6 +85,16 @@ function IconClock() {
   );
 }
 
+function IconLogout() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <path d="m16 17 5-5-5-5" />
+      <path d="M21 12H9" />
+    </svg>
+  );
+}
+
 // Nav dibagi 3 grup: UTAMA, ABSENSI, STOK. Grup dipisah label
 // small-caps + padding, bukan garis divider. Staff tidak melihat
 // Karyawan dan Laporan (hanya Admin/Bos/Manager).
@@ -125,6 +135,10 @@ export default function Layout() {
 
   const activePath = location.pathname;
 
+  // Pill diukur relatif ke nav. Karena nav bisa bergeser sendiri
+  // (overflow-y-auto), pengukuran harus menambahkan nav.scrollTop:
+  // posisi pill di dalam konten nav, bukan di jendela yang kelihatan.
+  // Ukur ulang juga saat nav digeser, supaya pill tidak melenceng.
   useLayoutEffect(() => {
     const measure = () => {
       const nav = navRef.current;
@@ -136,14 +150,19 @@ export default function Layout() {
       const navRect = nav.getBoundingClientRect();
       const elRect = el.getBoundingClientRect();
       setPill({
-        top: elRect.top - navRect.top,
+        top: elRect.top - navRect.top + nav.scrollTop,
         height: elRect.height,
         visible: true,
       });
     };
     measure();
     window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
+    const nav = navRef.current;
+    nav?.addEventListener('scroll', measure, { passive: true });
+    return () => {
+      window.removeEventListener('resize', measure);
+      nav?.removeEventListener('scroll', measure);
+    };
   }, [activePath, user?.role]);
 
   const handleLogout = () => {
@@ -153,9 +172,13 @@ export default function Layout() {
 
   return (
     <div className="flex min-h-screen">
-      {/* Sidebar: hanya di desktop (md ke atas). */}
-      <aside className="relative z-10 hidden w-60 shrink-0 flex-col bg-primary-deep text-white md:flex">
-        <div className="px-5 pb-5 pt-6">
+      {/* Sidebar: hanya di desktop (md ke atas). Menempel di viewport
+          (sticky, tinggi penuh layar), bukan mengikuti tinggi halaman:
+          footer (nama + tombol Keluar) selalu kelihatan tanpa scroll,
+          di halaman panjang sekalipun. Nav bergeser sendiri kalau
+          isinya lebih tinggi dari layar. */}
+      <aside className="sticky top-0 z-10 hidden h-screen w-60 shrink-0 flex-col bg-primary-deep text-white md:flex">
+        <div className="shrink-0 px-5 pb-5 pt-6">
           <div className="flex items-center gap-3">
             <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Logo Sabun Palem" className="h-10 w-auto" />
             <div>
@@ -165,7 +188,7 @@ export default function Layout() {
           </div>
         </div>
 
-        <nav ref={navRef} className="relative flex-1 space-y-6 px-3 py-2">
+        <nav ref={navRef} className="relative min-h-0 flex-1 space-y-6 overflow-y-auto px-3 py-2">
           <div
             className="sidebar-pill"
             style={{
@@ -209,13 +232,17 @@ export default function Layout() {
           })}
         </nav>
 
-        <div className="border-t border-white/15 px-5 py-4">
+        {/* Footer menempel di bawah viewport (shrink-0): nama pengguna
+            dan tombol Keluar selalu kelihatan. Tombol Keluar latar putih
+            solid + ikon, tinggi 48px, supaya jelas bisa ditekan. */}
+        <div className="shrink-0 border-t border-white/15 px-5 py-4">
           <p className="text-[15px] font-semibold">{user?.name}</p>
           <p className="text-[13px] text-white/70">{user?.role}</p>
           <button
             onClick={handleLogout}
-            className="btn-press mt-3 min-h-[40px] w-full rounded-control bg-white/10 text-[15px] font-semibold transition-colors hover:bg-white/20"
+            className="btn-press mt-3 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-control bg-white text-[15px] font-bold text-primary-deep transition-colors hover:bg-primary-soft"
           >
+            <IconLogout />
             Keluar
           </button>
         </div>
