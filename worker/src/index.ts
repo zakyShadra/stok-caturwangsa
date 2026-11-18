@@ -14,6 +14,8 @@
 //   POST /api/scan/undo   -> batalkan satu transaksi (baris koreksi)
 //   GET  /api/monthly     -> stok akhir tiap produk per tanggal (?month=YYYY-MM)
 //   POST /api/monthly/create -> buat tab bulanan di Sheet ({month: YYYY-MM})
+//   GET  /api/marketing   -> agregat penjualan offline dari sheet
+//          Analisis Penjualan Offline 2026 (live, cache maks 60 detik)
 //
 // Cron tiap tanggal 1 jam 00:00 WIB membuat tab bulanan baru di Sheet
 // (lihat wrangler.toml [triggers]).
@@ -21,6 +23,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { attendanceRoutes } from './attendance';
 import type { AttendanceEnv } from './attendance';
+import { getMarketing } from './marketing';
 import { insertRowAtTop, readRange } from './sheets';
 import type { SheetsEnv } from './sheets';
 import {
@@ -440,6 +443,18 @@ app.post('/api/monthly/create', async (c) => {
   } catch (e) {
     console.error('POST /api/monthly/create gagal:', e instanceof Error ? e.message : e);
     return jsonError(c, 502, 'Gagal membuat tab bulanan di spreadsheet');
+  }
+});
+
+// GET /api/marketing: agregat penjualan offline siap grafik (per
+// bulan + top 10 produk). Dibaca live dari sheet Analisis setiap
+// request, cache di Worker maksimal 60 detik.
+app.get('/api/marketing', async (c) => {
+  try {
+    return c.json(await getMarketing(c.env));
+  } catch (e) {
+    console.error('GET /api/marketing gagal:', e instanceof Error ? e.message : e);
+    return jsonError(c, 502, 'Gagal membaca data pemasaran dari spreadsheet');
   }
 });
 
