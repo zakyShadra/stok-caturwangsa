@@ -102,9 +102,11 @@ async function sheetsFetch(
   env: SheetsEnv,
   path: string,
   init?: RequestInit,
+  spreadsheetId?: string,
 ): Promise<unknown> {
   const token = await getAccessToken(env);
-  const res = await fetch(`${SHEETS_BASE}/${env.SHEET_ID}${path}`, {
+  const id = spreadsheetId ?? env.SHEET_ID;
+  const res = await fetch(`${SHEETS_BASE}/${id}${path}`, {
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -125,6 +127,23 @@ export async function readRange(env: SheetsEnv, range: string): Promise<string[]
   const data = (await sheetsFetch(
     env,
     `/values/${encodeURIComponent(range)}`,
+  )) as { values?: string[][] };
+  return data.values ?? [];
+}
+
+// Seperti readRange, tapi dari spreadsheet lain (bukan SHEET_ID).
+// Dipakai endpoint pemasaran untuk membaca sheet Analisis Penjualan
+// Offline 2026, yang dikelola analis dan sering berubah.
+export async function readRangeFrom(
+  env: SheetsEnv,
+  spreadsheetId: string,
+  range: string,
+): Promise<string[][]> {
+  const data = (await sheetsFetch(
+    env,
+    `/values/${encodeURIComponent(range)}`,
+    undefined,
+    spreadsheetId,
   )) as { values?: string[][] };
   return data.values ?? [];
 }
