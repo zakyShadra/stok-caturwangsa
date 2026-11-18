@@ -538,37 +538,39 @@ export default function Attendance() {
                     )}
                   </div>
                 ) : null}
-                {!isStaff ? (
-                  <div className="mt-3 border-t border-hairline pt-3">
-                    <p className="text-base font-bold text-ink">Selfie absen</p>
-                    {(() => {
-                      const v = verificationByRecord[verificationKey(r.employeeId, r.date)];
-                      const items: { label: string; data: CheckVerification }[] = [];
-                      if (v?.masuk) items.push({ label: 'Masuk', data: v.masuk });
-                      if (v?.pulang) items.push({ label: 'Pulang', data: v.pulang });
-                      if (items.length === 0) {
-                        return (
-                          <p className="mt-1 text-base text-ink-muted">
-                            Belum ada selfie absen.
-                          </p>
-                        );
-                      }
+                {/* Selfie absen: semua role melihatnya. Staf hanya pernah
+                    melihat record-nya sendiri (dayRecords difilter ke
+                    akunnya), jadi yang tampil di sini selfie dia
+                    sendiri, untuk memastikan fotonya ter-upload benar. */}
+                <div className="mt-3 border-t border-hairline pt-3">
+                  <p className="text-base font-bold text-ink">Selfie absen</p>
+                  {(() => {
+                    const v = verificationByRecord[verificationKey(r.employeeId, r.date)];
+                    const items: { label: string; data: CheckVerification }[] = [];
+                    if (v?.masuk) items.push({ label: 'Masuk', data: v.masuk });
+                    if (v?.pulang) items.push({ label: 'Pulang', data: v.pulang });
+                    if (items.length === 0) {
                       return (
-                        <div className="mt-2 space-y-2">
-                          {items.map(({ label, data }) => (
-                            <VerificationRow
-                              key={label}
-                              label={label}
-                              data={data}
-                              employeeName={employeeName(r.employeeId)}
-                              onView={viewLightbox}
-                            />
-                          ))}
-                        </div>
+                        <p className="mt-1 text-base text-ink-muted">
+                          Belum ada selfie absen.
+                        </p>
                       );
-                    })()}
-                  </div>
-                ) : null}
+                    }
+                    return (
+                      <div className="mt-2 space-y-2">
+                        {items.map(({ label, data }) => (
+                          <VerificationRow
+                            key={label}
+                            label={label}
+                            data={data}
+                            employeeName={employeeName(r.employeeId)}
+                            onView={viewLightbox}
+                          />
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
                 {isBos && r.approval === 'pending' ? (
                   <div className="mt-4 flex gap-2">
                     <button
