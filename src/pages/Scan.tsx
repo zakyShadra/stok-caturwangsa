@@ -83,7 +83,7 @@ export default function Scan() {
         qty,
         location,
         note,
-        // Petugas = akun yang sedang masuk (dulu selalu tertulis Budi,
+        // Petugas = akun yang sedang masuk (dulu selalu tertulis satu nama,
         // meski yang scan akun lain, jadi riwayatnya salah nama).
         staff: user?.name ?? 'Staf',
       });

@@ -3,7 +3,7 @@
 // photos di D1 yang sama (base64; lihat schema.sql untuk alasan dan
 // rencana migrasi ke R2). Worker adalah satu-satunya sumber kebenaran:
 // aplikasi di HP mana pun membaca data yang sama, jadi Bos bisa
-// melihat selfie Budi dari HP-nya sendiri dan Manager bisa melihat
+// melihat selfie karyawan dari HP-nya sendiri dan Manager bisa melihat
 // laporan dari HP-nya.
 //
 // Endpoint (dipasang di bawah /api/absen):

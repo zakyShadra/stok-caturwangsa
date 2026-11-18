@@ -76,20 +76,20 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
   await page.waitForTimeout(800);
   const homeText = await page.evaluate(() => document.body.innerText);
   if (!homeText.includes('Semua karyawan sudah absen.')) {
-    errors.push('inside: Budi masih di Belum absen setelah absen masuk');
+    errors.push('inside: Putra masih di Belum absen setelah absen masuk');
   }
-  console.log('inside: beranda manager, Budi sudah tidak di Belum absen');
+  console.log('inside: beranda manager, Putra sudah tidak di Belum absen');
   await shot(page, 'desktop-gps-home-manager.png');
 
-  // Daftar absensi lewat sidebar (tanpa reload): kartu Budi + selfie.
+  // Daftar absensi lewat sidebar (tanpa reload): kartu Putra + selfie.
   await page.getByRole('link', { name: 'Absensi' }).first().click();
   await page.waitForTimeout(800);
   await checkOverflow(page, 'inside absensi-manager');
   const absText = await page.evaluate(() => document.body.innerText);
   if (!absText.includes('Selfie absen')) errors.push('inside: bagian Selfie absen tidak muncul');
-  if (!absText.includes('selfie-test.jpg')) errors.push('inside: selfie Budi tidak muncul di daftar absensi');
-  if (!absText.includes('Budi Santoso')) errors.push('inside: kartu Budi tidak muncul di daftar absensi');
-  console.log('inside: kartu Budi + selfie tampil di daftar absensi manager');
+  if (!absText.includes('selfie-test.jpg')) errors.push('inside: selfie Putra tidak muncul di daftar absensi');
+  if (!absText.includes('Putra')) errors.push('inside: kartu Putra tidak muncul di daftar absensi');
+  console.log('inside: kartu Putra + selfie tampil di daftar absensi manager');
   await shot(page, 'desktop-gps-absensi-manager.png');
   await ctx.close();
 }

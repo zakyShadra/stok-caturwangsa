@@ -76,12 +76,21 @@ export const USERS: User[] = [
   { email: 'admin@sabunpalem.co.id', password: 'admin123', role: 'Admin', name: 'Zaky Shadra' },
   { email: 'bos@sabunpalem.co.id', password: 'bos123', role: 'Bos', name: 'Pak Yunus' },
   { email: 'manager@sabunpalem.co.id', password: 'manager123', role: 'Manager', name: 'Ibu Abe' },
-  { email: 'staff@sabunpalem.co.id', password: 'staff123', role: 'Staff', name: 'Budi Santoso' },
+  { email: 'staff@sabunpalem.co.id', password: 'staff123', role: 'Staff', name: 'Putra' },
 ];
 
+// Karyawan asli (Zaky, 18 Nov 2026): Putra, Dyas Nakata, Pak Andy.
+// Divisi/jabatan/HP mereka belum dikonfirmasi, jadi pakai placeholder
+// netral (Umum / Staff / kosong) sampai Zaky memberi datanya; jangan
+// dikarang. Maya Putri placeholder sampai Zaky memberi nama 4
+// karyawati, lalu diganti. ID 1 = akun staf yang bisa login (Putra).
+// Catatan: D1 sudah kosong (record tes lama dihapus 18 Nov 2026),
+// jadi tidak ada data lama yang terikat ke ID karyawan ini.
 export const EMPLOYEES: Employee[] = [
-  { id: 1, name: 'Budi Santoso', division: 'Gudang', position: 'Staff Gudang', phone: '0812-3456-7890', active: true },
-  { id: 2, name: 'Maya Putri', division: 'Admin', position: 'Staff Administrasi', phone: '0817-6789-0123', active: true },
+  { id: 1, name: 'Putra', division: 'Umum', position: 'Staff', phone: '', active: true },
+  { id: 2, name: 'Dyas Nakata', division: 'Umum', position: 'Staff', phone: '', active: true },
+  { id: 3, name: 'Pak Andy', division: 'Umum', position: 'Staff', phone: '', active: true },
+  { id: 4, name: 'Maya Putri', division: 'Admin', position: 'Staff Administrasi', phone: '0817-6789-0123', active: true },
 ];
 
 // Tidak ada batas jam masuk: jam kerja fleksibel (flex time), jadi

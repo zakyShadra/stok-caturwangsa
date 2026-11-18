@@ -1,7 +1,7 @@
 // Lapisan data absensi, pola yang sama dengan api.ts (stok):
 //   - Kalau VITE_API_URL diisi, semua data absensi dibaca dari dan
 //     ditulis ke Worker + D1. Server adalah sumber kebenaran: Bos
-//     melihat selfie Budi dari HP-nya sendiri, Manager melihat
+//     melihat selfie karyawan dari HP-nya sendiri, Manager melihat
 //     laporan dari HP-nya.
 //   - Kalau tidak diisi, data disimpan di localStorage perangkat
 //     (dipakai saat pengembangan lokal tanpa backend).

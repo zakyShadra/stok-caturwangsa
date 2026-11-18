@@ -107,7 +107,7 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
   check('live mobile: scan menampilkan total sebagai info sekunder', scanText.includes(`Total semua gudang: ${bomberTotal} bal`));
   await shot(page, 'live-scan-bomber-mobile.png');
 
-  // Smoke selfie + persetujuan: Budi absen, Bos setujui.
+  // Smoke selfie + persetujuan: Putra absen, Bos setujui.
   await logout(page);
   await loginAs(page, 'Staff');
   await doCheckFlow(page, 'Absen Masuk', 'Absen berhasil');
@@ -116,10 +116,10 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
   await page.goto(BASE + '/absensi', { waitUntil: 'networkidle' });
   await page.waitForTimeout(1000);
   const selfieOk = await page.evaluate(() => {
-    const img = document.querySelector('img[alt="Selfie absen masuk Budi Santoso"]');
+    const img = document.querySelector('img[alt="Selfie absen masuk Putra"]');
     return img !== null && img.complete && img.naturalWidth > 0;
   });
-  check('live mobile: selfie Budi tampil di antrean Bos', selfieOk);
+  check('live mobile: selfie Putra tampil di antrean Bos', selfieOk);
   await page.getByRole('button', { name: 'Setujui', exact: true }).first().click();
   await page.waitForTimeout(600);
   check('live mobile: setelah disetujui badge Disetujui tampil', (await page.getByText('Disetujui', { exact: true }).count()) >= 1);

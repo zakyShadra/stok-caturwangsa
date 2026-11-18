@@ -77,16 +77,16 @@ interface RawTx {
 }
 
 const RAW_TX: RawTx[] = [
-  { timestamp: '2026-11-17T09:12:00+07:00', productId: 'jelly-130gr', type: 'keluar', qty: 30, location: 'klinik', note: 'Jualan Magang', staff: 'Budi' },
-  { timestamp: '2026-11-17T08:40:00+07:00', productId: 'dwl-palem-jerigen', type: 'keluar', qty: 12, location: 'klinik', note: 'Jualan Offline', staff: 'Budi' },
+  { timestamp: '2026-11-17T09:12:00+07:00', productId: 'jelly-130gr', type: 'keluar', qty: 30, location: 'klinik', note: 'Jualan Magang', staff: 'Putra' },
+  { timestamp: '2026-11-17T08:40:00+07:00', productId: 'dwl-palem-jerigen', type: 'keluar', qty: 12, location: 'klinik', note: 'Jualan Offline', staff: 'Putra' },
   { timestamp: '2026-11-16T15:20:00+07:00', productId: 'fk400', type: 'masuk', qty: 50, location: 'klinik', note: 'Stok Gudang', staff: 'Sari' },
-  { timestamp: '2026-11-16T11:05:00+07:00', productId: 'clean-up-dus', type: 'keluar', qty: 8, location: 'gudang-kantor', note: 'Konsinyasi', staff: 'Budi' },
-  { timestamp: '2026-11-16T09:30:00+07:00', productId: 'jelly-130gr', type: 'keluar', qty: 22, location: 'klinik', note: 'Jualan Magang', staff: 'Budi' },
+  { timestamp: '2026-11-16T11:05:00+07:00', productId: 'clean-up-dus', type: 'keluar', qty: 8, location: 'gudang-kantor', note: 'Konsinyasi', staff: 'Putra' },
+  { timestamp: '2026-11-16T09:30:00+07:00', productId: 'jelly-130gr', type: 'keluar', qty: 22, location: 'klinik', note: 'Jualan Magang', staff: 'Putra' },
   { timestamp: '2026-11-15T14:45:00+07:00', productId: 'dwl-bomber', type: 'keluar', qty: 25, location: 'klinik', note: 'Jualan Offline', staff: 'Sari' },
-  { timestamp: '2026-11-15T10:15:00+07:00', productId: 'pembersih-lantai-jerigen', type: 'keluar', qty: 10, location: 'klinik', note: 'Konsinyasi', staff: 'Budi' },
+  { timestamp: '2026-11-15T10:15:00+07:00', productId: 'pembersih-lantai-jerigen', type: 'keluar', qty: 10, location: 'klinik', note: 'Konsinyasi', staff: 'Putra' },
   { timestamp: '2026-11-14T16:00:00+07:00', productId: 'hand-soap-jerigen', type: 'masuk', qty: 40, location: 'klinik', note: 'Stok Gudang', staff: 'Sari' },
-  { timestamp: '2026-11-14T13:30:00+07:00', productId: 'jelly-pink-toples', type: 'keluar', qty: 15, location: 'kantor', note: 'Sample', staff: 'Budi' },
-  { timestamp: '2026-11-14T09:00:00+07:00', productId: 'fk50', type: 'keluar', qty: 20, location: 'gudang-kantor', note: 'Jualan Magang', staff: 'Budi' },
+  { timestamp: '2026-11-14T13:30:00+07:00', productId: 'jelly-pink-toples', type: 'keluar', qty: 15, location: 'kantor', note: 'Sample', staff: 'Putra' },
+  { timestamp: '2026-11-14T09:00:00+07:00', productId: 'fk50', type: 'keluar', qty: 20, location: 'gudang-kantor', note: 'Jualan Magang', staff: 'Putra' },
   { timestamp: '2026-11-13T15:10:00+07:00', productId: 'karbol-jerigen', type: 'keluar', qty: 6, location: 'klinik', note: 'Jualan Offline', staff: 'Sari' },
   { timestamp: '2026-11-13T10:40:00+07:00', productId: 'jelly-130gr', type: 'masuk', qty: 100, location: 'klinik', note: 'Stok Toko', staff: 'Sari' },
 ];

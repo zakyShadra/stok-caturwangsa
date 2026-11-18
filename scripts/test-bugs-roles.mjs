@@ -91,7 +91,7 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
   const page = await ctx.newPage();
   watchErrors(page, 'mobile');
 
-  // BUG 1 + 2: Budi absen masuk + pulang dengan selfie asli.
+  // BUG 1 + 2: Putra absen masuk + pulang dengan selfie asli.
   await loginAs(page, 'Staff');
   await doCheckFlow(page, 'Absen Masuk', 'Absen berhasil');
   check('mobile: tombol Absen Masuk jadi "Absen berhasil"', await page.getByRole('button', { name: 'Absen berhasil' }).count() === 1);
@@ -103,7 +103,7 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
     const el = [...document.querySelectorAll('p')].find((p) => p.textContent.includes('Anda absen masuk pukul'));
     return el ? el.textContent : '';
   });
-  const budiTime = (statusText.match(/pukul (\d{2}:\d{2})/) ?? [])[1] ?? '';
+  const putraTime = (statusText.match(/pukul (\d{2}:\d{2})/) ?? [])[1] ?? '';
   check('mobile: status absen "Hadir, pulang" tanpa spasi sebelum koma dan tanpa kata Telat', /Hadir, pulang/.test(statusText) && !/Hadir\s+,/.test(statusText) && !statusText.includes('Telat'), statusText);
 
   // Bukti kerja: lampirkan file, harus muncul di daftar.
@@ -120,15 +120,15 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
   await loginAs(page, 'Manager');
   await page.goto(BASE + '/absensi', { waitUntil: 'networkidle' });
   await page.waitForTimeout(800);
-  check('mobile: selfie masuk Budi tampil (tidak rusak)', await imgOk(page, 'Selfie absen masuk Budi Santoso'));
-  check('mobile: selfie pulang Budi tampil (tidak rusak)', await imgOk(page, 'Selfie absen pulang Budi Santoso'));
-  check('mobile: bukti kerja Budi terlihat Manager (1 file)', (await page.getByText('Bukti kerja (1)').count()) >= 1);
+  check('mobile: selfie masuk Putra tampil (tidak rusak)', await imgOk(page, 'Selfie absen masuk Putra'));
+  check('mobile: selfie pulang Putra tampil (tidak rusak)', await imgOk(page, 'Selfie absen pulang Putra'));
+  check('mobile: bukti kerja Putra terlihat Manager (1 file)', (await page.getByText('Bukti kerja (1)').count()) >= 1);
   check('mobile: antrean menunggu persetujuan (1) tampil', (await page.getByText('Menunggu persetujuan (1)').count()) >= 1);
   check('mobile: Manager tidak melihat tombol Setujui', (await page.getByRole('button', { name: 'Setujui', exact: true }).count()) === 0);
   check('mobile: Manager tidak melihat tombol Tolak', (await page.getByRole('button', { name: 'Tolak', exact: true }).count()) === 0);
 
   // Lightbox: ketuk selfie, labelnya "Selfie absen", bukan "Foto bukti kerja".
-  await page.locator('img[alt="Selfie absen masuk Budi Santoso"]').first().click();
+  await page.locator('img[alt="Selfie absen masuk Putra"]').first().click();
   await page.waitForTimeout(500);
   const lbAlt = await page.evaluate(() => document.querySelector('[role="dialog"] img')?.getAttribute('alt') ?? '');
   check('mobile: lightbox selfie berlabel "Selfie absen"', lbAlt.startsWith('Selfie absen'), lbAlt);
@@ -137,8 +137,8 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
 
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForTimeout(800);
-  check('mobile: selfie masuk Budi tetap tampil setelah reload', await imgOk(page, 'Selfie absen masuk Budi Santoso'));
-  check('mobile: selfie pulang Budi tetap tampil setelah reload', await imgOk(page, 'Selfie absen pulang Budi Santoso'));
+  check('mobile: selfie masuk Putra tetap tampil setelah reload', await imgOk(page, 'Selfie absen masuk Putra'));
+  check('mobile: selfie pulang Putra tetap tampil setelah reload', await imgOk(page, 'Selfie absen pulang Putra'));
   await shot(page, 'bug1-selfie-setelah-reload-mobile.png');
   await checkOverflow(page, 'mobile /absensi manager');
 
@@ -149,7 +149,7 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
     const h = [...document.querySelectorAll('h2')].find((e) => e.textContent === 'Absen saya');
     return h?.closest('div')?.innerText ?? '';
   });
-  check('mobile: kartu "Absen saya" Manager belum absen (bukan data Budi)',
+  check('mobile: kartu "Absen saya" Manager belum absen (bukan data Putra)',
     absenSaya.includes('Anda belum absen masuk.') && !absenSaya.includes('Masuk pukul'), absenSaya.replace(/\n/g, ' | '));
   await shot(page, 'bug2-absen-saya-manager-mobile.png');
 
@@ -176,7 +176,7 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
   await shot(page, 'bug3-beranda-total-mobile.png');
   await checkOverflow(page, 'mobile / manager');
 
-  // Bos menyetujui absen Budi: status + rekap berubah.
+  // Bos menyetujui absen Putra: status + rekap berubah.
   await logout(page);
   await loginAs(page, 'Bos');
   await page.goto(BASE + '/absensi', { waitUntil: 'networkidle' });
@@ -190,7 +190,7 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
   await page.waitForTimeout(800);
   const bosHome = await page.evaluate(() => document.body.textContent);
   check('mobile: Bos tidak punya kartu Absen saya', !bosHome.includes('Absen saya'));
-  // Rekap hari ini (tanpa Telat): Budi sudah disetujui = Hadir 1,
+  // Rekap hari ini (tanpa Telat): Putra sudah disetujui = Hadir 1,
   // Maya belum absen = Belum absen 1.
   const bosStats = await page.evaluate(() => {
     const label = [...document.querySelectorAll('div')].find((d) => d.textContent === 'Total karyawan');
@@ -207,7 +207,7 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
   check('mobile: tidak ada kata Telat di Beranda Bos', !bosHome.includes('Telat'));
   check('mobile: panel perhatian tidak lagi menampilkan Menunggu persetujuan', !bosHome.includes('Menunggu persetujuan:'));
 
-  // Izin/Cuti: Budi mengajukan Cuti besok, Bos menolak.
+  // Izin/Cuti: Putra mengajukan Cuti besok, Bos menolak.
   await logout(page);
   await loginAs(page, 'Staff');
   await page.goto(BASE + '/absensi', { waitUntil: 'networkidle' });
@@ -244,16 +244,16 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
     return [...(card?.querySelectorAll('.tabular-nums') ?? [])].map((n) => n.textContent);
   });
   // TOTAL baru: Hadir, Izin/Cuti, Total (tanpa kolom Telat).
-  // Budi Hadir 1 (disetujui), Cuti ditolak tidak masuk hitungan.
+  // Putra Hadir 1 (disetujui), Cuti ditolak tidak masuk hitungan.
   check('mobile: Laporan TOTAL Hadir 1, Izin/Cuti 0, Total 1', totals.join(',') === '1,0,1', totals.join(','));
 
-  // BUG 2 (kembali): data Budi utuh setelah ganti-ganti akun.
+  // BUG 2 (kembali): data Putra utuh setelah ganti-ganti akun.
   await logout(page);
   await loginAs(page, 'Staff');
   await page.waitForTimeout(800);
-  const budiHome = await page.evaluate(() => document.body.textContent);
-  check('mobile: Budi kembali, status absennya utuh', budiHome.includes(`Anda absen masuk pukul ${budiTime}`), budiTime);
-  await shot(page, 'bug2-absen-saya-budi-utuh-mobile.png');
+  const putraHome = await page.evaluate(() => document.body.textContent);
+  check('mobile: Putra kembali, status absennya utuh', putraHome.includes(`Anda absen masuk pukul ${putraTime}`), putraTime);
+  await shot(page, 'bug2-absen-saya-putra-utuh-mobile.png');
   await checkOverflow(page, 'mobile / staf');
   await ctx.close();
 }
@@ -318,7 +318,7 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
   const bosNav = await page.evaluate(() => [...document.querySelectorAll('aside nav a')].map((a) => a.textContent.trim()));
   check('desktop: sidebar Bos tanpa Karyawan', !bosNav.includes('Karyawan'), bosNav.join(', '));
 
-  // Tolak + absen ulang: Budi absen, Bos menolak, Budi absen ulang.
+  // Tolak + absen ulang: Putra absen, Bos menolak, Putra absen ulang.
   await logout(page);
   await loginAs(page, 'Staff');
   await doCheckFlow(page, 'Absen Masuk', 'Absen berhasil');
@@ -332,7 +332,7 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
   await loginAs(page, 'Staff');
   await page.waitForTimeout(800);
   const rejectHome = await page.evaluate(() => document.body.textContent);
-  check('desktop: Budi melihat pemberitahuan absen ditolak', rejectHome.includes('Absen Anda hari ini ditolak Bos. Silakan absen ulang.'));
+  check('desktop: Putra melihat pemberitahuan absen ditolak', rejectHome.includes('Absen Anda hari ini ditolak Bos. Silakan absen ulang.'));
   check('desktop: tombol Absen Masuk aktif lagi setelah ditolak', await page.getByRole('button', { name: 'Absen Masuk', exact: true }).isEnabled());
   await shot(page, 'approval-absen-ditolak-desktop.png');
   await doCheckFlow(page, 'Absen Masuk', 'Absen berhasil');
@@ -341,10 +341,10 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
   await loginAs(page, 'Manager');
   await page.goto(BASE + '/absensi', { waitUntil: 'networkidle' });
   await page.waitForTimeout(800);
-  check('desktop: absen ulang Budi kembali pending di antrean', (await page.getByText('Menunggu persetujuan (1)').count()) >= 1);
+  check('desktop: absen ulang Putra kembali pending di antrean', (await page.getByText('Menunggu persetujuan (1)').count()) >= 1);
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForTimeout(800);
-  check('desktop: selfie tetap tampil setelah reload', await imgOk(page, 'Selfie absen masuk Budi Santoso'));
+  check('desktop: selfie tetap tampil setelah reload', await imgOk(page, 'Selfie absen masuk Putra'));
   await shot(page, 'bug1-selfie-setelah-reload-desktop.png');
   await checkOverflow(page, 'desktop /absensi');
 

@@ -163,7 +163,7 @@ export default function Home() {
   const employeeName = (id: number) => EMPLOYEES.find((e) => e.id === id)?.name ?? '-';
   const employeeDivision = (id: number) => EMPLOYEES.find((e) => e.id === id)?.division ?? '-';
 
-  // Rekap saya bulan ini (akun staf = Budi Santoso, id 1).
+  // Rekap saya bulan ini (akun staf = Putra, id 1).
   // Hanya yang sudah disetujui yang dihitung; yang pending ditampilkan
   // terpisah di bawah rekap.
   const monthPrefix = today.slice(0, 7);
@@ -194,7 +194,7 @@ export default function Home() {
   const handleCheckOut = () => setFlow('pulang');
 
   // Flow selesai: catat absen dengan verifikasi (GPS + selfie).
-  // Akun staf = Budi Santoso (id 1), jadi catatannya masuk ke
+  // Akun staf = Putra (id 1), jadi catatannya masuk ke
   // daftar absensi. Admin/Manager tidak ada di daftar karyawan.
   // Flow hanya ditutup kalau penyimpanan berhasil; kalau gagal,
   // pesan error tampil di dalam flow dan pengguna bisa coba lagi.

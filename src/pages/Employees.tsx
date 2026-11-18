@@ -6,7 +6,11 @@ import { EMPLOYEES } from '../lib/attendance';
 import type { Employee } from '../lib/attendance';
 import { BigButton, PageHeader } from '../components/ui';
 
-const DIVISIONS = ['Produksi', 'Gudang', 'Admin', 'Sales', 'IT'];
+// 'Umum' = divisi netral untuk karyawan yang divisinya belum
+// dikonfirmasi (placeholder, bukan divisi beneran). Harus ada di
+// daftar ini supaya form Ubah menampilkan nilai yang benar untuk
+// karyawan placeholder; select tanpa opsi yang cocok tampil kosong.
+const DIVISIONS = ['Produksi', 'Gudang', 'Admin', 'Sales', 'IT', 'Umum'];
 
 const emptyForm = { name: '', division: 'Produksi', position: '', phone: '' };
 
@@ -148,7 +152,7 @@ export default function Employees() {
                 <h3 className="text-lg font-bold leading-snug text-ink">{e.name}</h3>
                 <p className="text-base text-ink-muted">{e.position}</p>
                 <p className="text-base text-ink-muted">
-                  {e.division} · {e.phone}
+                  {e.phone ? `${e.division} · ${e.phone}` : e.division}
                 </p>
               </div>
               <span

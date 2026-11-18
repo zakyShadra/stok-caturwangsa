@@ -282,7 +282,7 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
   await page.goto(BASE + '/akun', { waitUntil: 'networkidle' });
   await page.waitForTimeout(800);
   const akunText = await page.evaluate(() => document.body.textContent);
-  check('audit: /akun menampilkan Budi Santoso + Staff', akunText.includes('Budi Santoso') && akunText.includes('Staff'));
+  check('audit: /akun menampilkan Putra + Staff', akunText.includes('Putra') && akunText.includes('Staff'));
   await checkOverflow(page, 'audit /akun desktop');
   await shot(page, 'audit-akun-desktop.png');
   await ctx.close();

@@ -185,7 +185,7 @@ export default function Attendance() {
   const dayRecords = useMemo(() => {
     const filtered = records.filter((r) => r.date === selectedDate);
     if (isStaff) {
-      // Staf hanya lihat riwayat sendiri (akun staf = Budi Santoso, id 1).
+      // Staf hanya lihat riwayat sendiri (akun staf = Putra, id 1).
       return filtered.filter((r) => r.employeeId === 1);
     }
     return filtered;

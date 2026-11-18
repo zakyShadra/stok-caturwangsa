@@ -1,6 +1,6 @@
 // Uji absensi server-backed lintas konteks terhadap Worker LIVE:
-// - Konteks 1 (Staff Budi): check-in dengan GPS tiruan + file selfie.
-// - Konteks 2 (Bos Pak Yunus): melihat catatan + selfie Budi (foto
+// - Konteks 1 (Staff Putra): check-in dengan GPS tiruan + file selfie.
+// - Konteks 2 (Bos Pak Yunus): melihat catatan + selfie Putra (foto
 //   dimuat dari endpoint /api/absen/foto, bukan localStorage),
 //   lalu menyetujui.
 // - Konteks 3 (Manager Ibu Abe): melihat catatan, TANPA tombol Setujui.
@@ -50,18 +50,18 @@ async function imgSrc(page, alt) {
 
 const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbox'] });
 
-// ---------- KONTEKS 1: Budi check-in ----------
-const ctxBudi = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, geolocation: OFFICE, permissions: ['geolocation'] });
-const budi = await ctxBudi.newPage();
-budi.on('pageerror', (e) => errors.push(`budi pageerror: ${e.message}`));
-await loginAs(budi, 'Staff');
-await budi.getByRole('button', { name: 'Absen Masuk', exact: true }).click();
-await budi.locator('input[type="file"]').first().waitFor({ state: 'attached', timeout: 15000 });
-await budi.setInputFiles('input[type="file"]', SELFIE);
-await budi.getByRole('button', { name: 'Ini Foto Saya' }).click({ timeout: 10000 });
-await budi.getByRole('button', { name: 'Absen berhasil' }).waitFor({ timeout: 10000 });
-check('remote: Budi check-in berhasil (tombol jadi "Absen berhasil")', true);
-await budi.screenshot({ path: path.join(OUT, 'remote-budi-checkin.png') });
+// ---------- KONTEKS 1: Putra check-in ----------
+const ctxPutra = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, geolocation: OFFICE, permissions: ['geolocation'] });
+const putra = await ctxPutra.newPage();
+putra.on('pageerror', (e) => errors.push(`putra pageerror: ${e.message}`));
+await loginAs(putra, 'Staff');
+await putra.getByRole('button', { name: 'Absen Masuk', exact: true }).click();
+await putra.locator('input[type="file"]').first().waitFor({ state: 'attached', timeout: 15000 });
+await putra.setInputFiles('input[type="file"]', SELFIE);
+await putra.getByRole('button', { name: 'Ini Foto Saya' }).click({ timeout: 10000 });
+await putra.getByRole('button', { name: 'Absen berhasil' }).waitFor({ timeout: 10000 });
+check('remote: Putra check-in berhasil (tombol jadi "Absen berhasil")', true);
+await putra.screenshot({ path: path.join(OUT, 'remote-putra-checkin.png') });
 
 // ---------- KONTEKS 2: Bos melihat + menyetujui ----------
 const ctxBos = await browser.newContext({ viewport: { width: 1280, height: 800 }, geolocation: OFFICE, permissions: ['geolocation'] });
@@ -71,9 +71,9 @@ await loginAs(bos, 'Bos');
 await bos.goto(BASE + '/absensi', { waitUntil: 'networkidle' });
 await bos.waitForTimeout(1200);
 check('remote: Bos melihat antrean menunggu persetujuan (1)', (await bos.getByText('Menunggu persetujuan (1)').count()) >= 1);
-const selfieSrc = await imgSrc(bos, 'Selfie absen masuk Budi Santoso');
-check('remote: selfie Budi dimuat dari endpoint server /api/absen/foto/', selfieSrc.includes('/api/absen/foto/'), selfieSrc);
-check('remote: selfie Budi tampil utuh di HP Bos (tidak rusak)', await imgOk(bos, 'Selfie absen masuk Budi Santoso'));
+const selfieSrc = await imgSrc(bos, 'Selfie absen masuk Putra');
+check('remote: selfie Putra dimuat dari endpoint server /api/absen/foto/', selfieSrc.includes('/api/absen/foto/'), selfieSrc);
+check('remote: selfie Putra tampil utuh di HP Bos (tidak rusak)', await imgOk(bos, 'Selfie absen masuk Putra'));
 check('remote: Bos melihat tombol Setujui', (await bos.getByRole('button', { name: 'Setujui', exact: true }).count()) >= 1);
 await bos.screenshot({ path: path.join(OUT, 'remote-bos-sebelum-setuju.png') });
 await bos.getByRole('button', { name: 'Setujui', exact: true }).first().click();
@@ -89,13 +89,13 @@ mgr.on('pageerror', (e) => errors.push(`manager pageerror: ${e.message}`));
 await loginAs(mgr, 'Manager');
 await mgr.goto(BASE + '/absensi', { waitUntil: 'networkidle' });
 await mgr.waitForTimeout(1200);
-check('remote: Manager melihat selfie Budi (tampil utuh)', await imgOk(mgr, 'Selfie absen masuk Budi Santoso'));
+check('remote: Manager melihat selfie Putra (tampil utuh)', await imgOk(mgr, 'Selfie absen masuk Putra'));
 check('remote: Manager tidak melihat tombol Setujui', (await mgr.getByRole('button', { name: 'Setujui', exact: true }).count()) === 0);
 check('remote: Manager tidak melihat tombol Tolak', (await mgr.getByRole('button', { name: 'Tolak', exact: true }).count()) === 0);
 await mgr.goto(BASE + '/laporan', { waitUntil: 'networkidle' });
 await mgr.waitForTimeout(1000);
 const reportText = await mgr.evaluate(() => document.body.textContent);
-check('remote: Manager melihat laporan (Budi Hadir 1)', reportText.includes('Budi Santoso'), reportText.slice(0, 200));
+check('remote: Manager melihat laporan (Putra Hadir 1)', reportText.includes('Putra'), reportText.slice(0, 200));
 
 await browser.close();
 

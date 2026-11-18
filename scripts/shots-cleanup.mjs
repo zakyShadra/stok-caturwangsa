@@ -76,7 +76,7 @@ for (const vp of VIEWPORTS) {
   await checkNoDeletedNames(page, `${vp.name} home-staff`);
   await shot(page, `${vp.name}-home-staff.png`);
 
-  // Absensi staf (Budi belum absen: kartu bukti kerja minta absen dulu)
+  // Absensi staf (Putra belum absen: kartu bukti kerja minta absen dulu)
   await page.goto(BASE + '/absensi', { waitUntil: 'networkidle' });
   await checkOverflow(page, `${vp.name} absensi-staff`);
   await checkNoDeletedNames(page, `${vp.name} absensi-staff`);
@@ -89,10 +89,10 @@ for (const vp of VIEWPORTS) {
   await checkNoDeletedNames(page, `${vp.name} home-manager`);
   const homeText = await page.evaluate(() => document.body.innerText);
   if (!homeText.includes('Total karyawan')) errors.push(`${vp.name} home-manager: ringkasan tidak muncul`);
-  if (!homeText.includes('Budi Santoso')) errors.push(`${vp.name} home-manager: Budi tidak muncul di Belum absen`);
+  if (!homeText.includes('Putra')) errors.push(`${vp.name} home-manager: Putra tidak muncul di Belum absen`);
   if (!homeText.includes('Maya Putri')) errors.push(`${vp.name} home-manager: Maya tidak muncul di Belum absen`);
   if (!homeText.includes('0 dari 0')) errors.push(`${vp.name} home-manager: hitungan bukti kerja bukan 0 dari 0`);
-  console.log(`${vp.name} home-manager: angka dicek (Budi + Maya belum absen, bukti 0 dari 0)`);
+  console.log(`${vp.name} home-manager: angka dicek (Putra + Maya belum absen, bukti 0 dari 0)`);
   await shot(page, `${vp.name}-home-manager.png`);
 
   // Absensi manager: hanya 1 kartu (Maya)

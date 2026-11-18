@@ -7,7 +7,7 @@
 // Server adalah sumber kebenaran: setelah tiap perubahan (absen,
 // persetujuan, pengajuan, bukti), bulan yang berubah dibaca ulang
 // dari server, jadi semua HP melihat data yang sama. Bos melihat
-// selfie Budi dari HP-nya sendiri; Manager melihat laporan dari
+// selfie karyawan dari HP-nya sendiri; Manager melihat laporan dari
 // HP-nya. localStorage hanya dipakai untuk status absen Admin dan
 // Manager (mereka belum ada di daftar karyawan, jadi absen mereka
 // tidak membuat catatan di server).
@@ -52,7 +52,7 @@ interface AttendanceStateValue {
 
 const AttendanceStateContext = createContext<AttendanceStateValue | null>(null);
 
-// Akun staf (Budi Santoso) adalah satu-satunya akun yang terikat ke
+// Akun staf (Putra) adalah satu-satunya akun yang terikat ke
 // karyawan di daftar absensi (id 1).
 const STAFF_EMPLOYEE_ID = 1;
 

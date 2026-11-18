@@ -104,7 +104,7 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
   // Halaman /akun di desktop: tidak error, tidak overflow.
   await page.goto(BASE + '/akun', { waitUntil: 'networkidle' });
   await page.waitForTimeout(800);
-  check('desktop: /akun menampilkan nama Budi Santoso', (await page.getByText('Budi Santoso').count()) >= 1);
+  check('desktop: /akun menampilkan nama Putra', (await page.getByText('Putra').count()) >= 1);
   await checkOverflow(page, 'desktop /akun');
   await ctx.close();
 }
@@ -142,7 +142,7 @@ const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbo
   await page.waitForURL(BASE + '/akun', { timeout: 8000 });
   await page.waitForTimeout(900);
   check('mobile: ketuk Akun sampai di /akun', page.url() === BASE + '/akun', page.url());
-  check('mobile: /akun menampilkan nama Budi Santoso', (await page.getByText('Budi Santoso').count()) >= 1);
+  check('mobile: /akun menampilkan nama Putra', (await page.getByText('Putra').count()) >= 1);
   check('mobile: /akun menampilkan peran Staff', (await page.getByText('Staff', { exact: true }).count()) >= 1);
   const keluarBox = await page.getByRole('button', { name: 'Keluar' }).boundingBox();
   check('mobile: tombol Keluar di /akun tingginya >= 48px', keluarBox !== null && keluarBox.height >= 48,
