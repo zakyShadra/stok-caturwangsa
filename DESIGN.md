@@ -105,16 +105,18 @@ fleksibel, tidak ada jam masuk tetap.
 
 - Mobile-first, konten max-width 720px di tengah (bukan 1200px:
   ini aplikasi kerja satu tangan, bukan dashboard kantor).
-- Navigasi bawah (bottom nav) di mobile, 5 item: Beranda, Absensi,
-  Stok, Riwayat, Akun. Item aktif ditandai satu pill yang berjalan
-  (code-xr pola 1), bukan tiap item menyala sendiri. Item Akun
-  membuka halaman Akun (nama + peran + tombol Keluar), karena di HP
-  tidak ada sidebar tempat tombol Keluar tinggal.
+- Navigasi bawah (bottom nav) di mobile, 6 item: Beranda, Absensi,
+  Stok, Riwayat, Pemasaran, Akun. Item aktif ditandai satu pill
+  yang berjalan (code-xr pola 1), bukan tiap item menyala sendiri.
+  Label 13px supaya "Pemasaran" muat satu baris di HP 360px. Item
+  Akun membuka halaman Akun (nama + peran + tombol Keluar), karena
+  di HP tidak ada sidebar tempat tombol Keluar tinggal.
 - Di desktop, sidebar kiri 240px teal gelap, grup UTAMA (Beranda),
   ABSENSI (Absensi, Karyawan, Laporan), STOK (Barang Masuk,
-  Barang Keluar, Lihat Stok, Riwayat). Satu pill berjalan menandai
-  item aktif, posisinya diukur dari DOM. Karyawan hanya muncul untuk
-  Admin; Laporan untuk Admin, Bos, dan Manager. Sidebar menempel di
+  Barang Keluar, Lihat Stok, Riwayat), PEMASARAN (Pemasaran).
+  Satu pill berjalan menandai item aktif, posisinya diukur dari
+  DOM. Karyawan hanya muncul untuk Admin; Laporan untuk Admin,
+  Bos, dan Manager; Pemasaran untuk semua role. Sidebar menempel di
   viewport (sticky, tinggi penuh layar): area nav bergeser sendiri
   kalau isinya lebih tinggi dari layar, dan footer (nama pengguna
   + tombol Keluar) selalu menempel di bawah viewport, tidak
@@ -246,6 +248,15 @@ fleksibel, tidak ada jam masuk tetap.
 10. **Akun** - nama, peran, dan email pengguna yang sedang masuk,
     plus satu tombol Keluar besar (lebar penuh, ikon + label).
     Satu layar satu tugas: halaman ini hanya untuk keluar.
+11. **Pemasaran** (semua role) - grafik penjualan offline dari
+    spreadsheet Analisis Penjualan Offline 2026, dibaca live
+    setiap halaman dibuka (cache Worker maks 60 detik). Grafik
+    Bklit UI (komponen yang sama dengan dashboard koperasi MBG):
+    Penjualan vs Kas Masuk per bulan (grouped bar, teal + oranye)
+    dan Produk terlaris 10 besar (horizontal bar). Tiap grafik
+    ditemani tabel angka pastinya. Sheet ini tidak punya data
+    pengeluaran, jadi tidak ada grafik pengeluaran. Hanya data
+    offline (bukan Shopee/Tokopedia). Bulan parsial ditandai *.
 
 ## Do's and Don'ts
 

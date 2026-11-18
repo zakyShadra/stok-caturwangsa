@@ -5,6 +5,7 @@
 // - Laporan untuk Admin/Bos/Manager (Staff dialihkan ke Beranda).
 // - Stok (scan, daftar stok, riwayat) bisa diakses semua role.
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
 import type { JSX } from 'react';
 import { AuthProvider, useAuth } from './lib/auth';
 import { AttendanceProvider } from './lib/attendance-state';
@@ -19,6 +20,10 @@ import Scan from './pages/Scan';
 import Stock from './pages/Stock';
 import History from './pages/History';
 import Account from './pages/Account';
+
+// Pemasaran dimuat malas: grafik Bklit (motion + d3) berat, hanya
+// diunduh saat menu Pemasaran dibuka, bukan di setiap halaman.
+const Marketing = lazy(() => import('./pages/Marketing'));
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user } = useAuth();
@@ -84,6 +89,22 @@ export default function App() {
               <Route path="scan/:type" element={<Scan />} />
               <Route path="stok" element={<Stock />} />
               <Route path="riwayat" element={<History />} />
+              {/* Pemasaran: semua role (Staff yang minta, Bos/Manager
+                  juga butuh melihat grafik penjualan). */}
+              <Route
+                path="pemasaran"
+                element={
+                  <Suspense
+                    fallback={
+                      <p className="rounded-card border border-hairline bg-surface p-6 text-center text-lg text-ink-muted">
+                        Memuat grafik...
+                      </p>
+                    }
+                  >
+                    <Marketing />
+                  </Suspense>
+                }
+              />
               <Route path="akun" element={<Account />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
