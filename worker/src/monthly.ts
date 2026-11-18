@@ -2,10 +2,15 @@
 // tab bulanan di Sheet. Zona waktu perusahaan adalah WIB; semua tanggal
 // memakai Asia/Jakarta.
 //
-// Tab bulanan: kolom pertama Produk, lalu satu kolom per tanggal,
-// lalu kolom Total di ujung. Tiap sel tanggal memakai rumus SUMIFS
-// dari tab Log Transaksi (kolom Tanggal), jadi angkanya selalu
-// mengikuti log terbaru tanpa perlu ditulis ulang.
+// Tab bulanan berisi 4 blok bertumpuk, tiap blok 1 baris judul +
+// 1 baris header + 24 baris produk: (1) TOTAL SEMUA GUDANG,
+// (2) GUDANG KLINIK, (3) GUDANG KANTOR, (4) KANTOR. Tiap blok punya
+// kolom Produk, lalu satu kolom per tanggal, lalu kolom Total.
+// Tiap sel tanggal memakai rumus SUMIFS dari tab Log Transaksi
+// (kolom Tanggal, dan kolom Lokasi untuk blok gudang), jadi angkanya
+// selalu mengikuti log terbaru tanpa perlu ditulis ulang. Blok Total
+// selalu sama dengan jumlah ketiga blok gudang karena semuanya
+// dihitung dari log yang sama.
 import { CATALOG } from './products';
 import {
   batchUpdateSheets,
@@ -141,32 +146,85 @@ function colLetter(n: number): string {
 
 // Rumus stok akhir hari tanggal d untuk produk di baris r. Tanggal
 // yang belum lewat dibiarkan kosong. Locale sheet id_ID, pemisah `;`.
-function dayFormula(year: number, month: number, day: number, row: number): string {
+// location: label Lokasi di Log (misal 'Gudang Klinik'); null berarti
+// semua lokasi digabung (blok Total).
+function dayFormula(
+  year: number,
+  month: number,
+  day: number,
+  row: number,
+  location: string | null,
+): string {
   const date = `DATE(${year};${month};${day})`;
+  const loc = location ? `;'Log Transaksi'!$D:$D;"${location}"` : '';
   const masuk =
     `SUMIFS('Log Transaksi'!$F:$F;'Log Transaksi'!$C:$C;$A${row};` +
-    `'Log Transaksi'!$I:$I;"<="&${date};'Log Transaksi'!$E:$E;"Masuk")`;
+    `'Log Transaksi'!$I:$I;"<="&${date};'Log Transaksi'!$E:$E;"Masuk"${loc})`;
   const keluar =
     `SUMIFS('Log Transaksi'!$F:$F;'Log Transaksi'!$C:$C;$A${row};` +
-    `'Log Transaksi'!$I:$I;"<="&${date};'Log Transaksi'!$E:$E;"Keluar")`;
+    `'Log Transaksi'!$I:$I;"<="&${date};'Log Transaksi'!$E:$E;"Keluar"${loc})`;
   return `=IF(${date}>TODAY();"";${masuk}-${keluar})`;
 }
 
 // Rumus Total: stok terkini produk itu (semua pergerakan tanpa batas
-// tanggal), sama dengan kolom Total di tab Stok Terkini.
-function totalFormula(row: number): string {
+// tanggal), sama dengan kolom Total di tab Stok Terkini. location
+// membatasi ke satu gudang; null berarti semua lokasi.
+function totalFormula(row: number, location: string | null): string {
+  const loc = location ? `;'Log Transaksi'!$D:$D;"${location}"` : '';
   return (
     `=SUMIFS('Log Transaksi'!$F:$F;'Log Transaksi'!$C:$C;$A${row};` +
-    `'Log Transaksi'!$E:$E;"Masuk")` +
+    `'Log Transaksi'!$E:$E;"Masuk"${loc})` +
     `-SUMIFS('Log Transaksi'!$F:$F;'Log Transaksi'!$C:$C;$A${row};` +
-    `'Log Transaksi'!$E:$E;"Keluar")`
+    `'Log Transaksi'!$E:$E;"Keluar"${loc})`
   );
 }
 
+// Blok-blok tab bulanan. Warna satu keluarga hijau, blok Total paling
+// gelap supaya terbaca sebagai ringkasan. Teks putih pada pita gelap,
+// teks gelap pada pita terang.
+interface MonthlyBlock {
+  title: string;
+  location: string | null;
+  fill: { red: number; green: number; blue: number };
+  textWhite: boolean;
+}
+
+const MONTHLY_BLOCKS: MonthlyBlock[] = [
+  {
+    title: 'TOTAL SEMUA GUDANG',
+    location: null,
+    fill: { red: 0.15294118, green: 0.30588235, blue: 0.0745098 },
+    textWhite: true,
+  },
+  {
+    title: 'GUDANG KLINIK',
+    location: 'Gudang Klinik',
+    fill: { red: 0.21960784, green: 0.4627451, blue: 0.11372549 },
+    textWhite: true,
+  },
+  {
+    title: 'GUDANG KANTOR',
+    location: 'Gudang Kantor',
+    fill: { red: 0.41568627, green: 0.65882353, blue: 0.30980392 },
+    textWhite: true,
+  },
+  {
+    title: 'KANTOR',
+    location: 'Kantor',
+    fill: { red: 0.57647059, green: 0.76862745, blue: 0.49019608 },
+    textWhite: false,
+  },
+];
+
+// Baris dalam satu blok: 1 judul + 1 header + 24 produk.
+const ROWS_PER_BLOCK = CATALOG.length + 2;
+
 // Buat tab bulanan untuk bulan yang diminta. Kalau tab sudah ada,
-// tidak dibuat lagi (created: false). Format mengikuti template lama:
-// header tebal + isi hijau, border di semua sel, baris header dan
-// kolom Produk dibekukan.
+// tidak dibuat lagi (created: false). Format mengikuti tab Stok
+// Terkini: header tebal + isi hijau, border di semua sel, baris
+// header dan kolom Produk dibekukan. Sel data putih (bukan hijau)
+// supaya angka mudah dibaca; warna hijau hanya di baris judul blok
+// dan baris header.
 export async function createMonthlyTab(
   env: SheetsEnv,
   year: number,
@@ -179,7 +237,7 @@ export async function createMonthlyTab(
   const days = daysInMonth(year, month);
   const lastCol = days + 2; // Produk + tanggal + Total
   const lastColLetter = colLetter(lastCol);
-  const lastRow = CATALOG.length + 1;
+  const lastRow = MONTHLY_BLOCKS.length * ROWS_PER_BLOCK;
 
   const res = await batchUpdateSheets(env, [
     { addSheet: { properties: { title } } },
@@ -194,15 +252,19 @@ export async function createMonthlyTab(
     ...Array.from({ length: days }, (_, i) => i + 1),
     'Total',
   ];
-  const values: (string | number)[][] = [header];
-  CATALOG.forEach((p, i) => {
-    const row = i + 2;
-    const cells: (string | number)[] = [p.name];
-    for (let d = 1; d <= days; d++) {
-      cells.push(dayFormula(year, month, d, row));
-    }
-    cells.push(totalFormula(row));
-    values.push(cells);
+  const values: (string | number)[][] = [];
+  MONTHLY_BLOCKS.forEach((block) => {
+    values.push([block.title]);
+    values.push(header);
+    CATALOG.forEach((p) => {
+      const row = values.length + 1;
+      const cells: (string | number)[] = [p.name];
+      for (let d = 1; d <= days; d++) {
+        cells.push(dayFormula(year, month, d, row, block.location));
+      }
+      cells.push(totalFormula(row, block.location));
+      values.push(cells);
+    });
   });
   await updateValues(
     env,
@@ -212,16 +274,11 @@ export async function createMonthlyTab(
   );
 
   const green = { red: 0.8509804, green: 0.91764706, blue: 0.827451 };
+  const white = { red: 1, green: 1, blue: 1 };
   const border = { style: 'SOLID' };
   const borders = { top: border, bottom: border, left: border, right: border };
-  await batchUpdateSheets(env, [
-    {
-      repeatCell: {
-        range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: lastCol },
-        cell: { userEnteredFormat: { backgroundColor: green, horizontalAlignment: 'CENTER', textFormat: { bold: true, fontSize: 11 } } },
-        fields: 'userEnteredFormat(backgroundColor,horizontalAlignment,textFormat)',
-      },
-    },
+  const requests: unknown[] = [
+    // Border di semua sel tab.
     {
       repeatCell: {
         range: { sheetId, startRowIndex: 0, endRowIndex: lastRow, startColumnIndex: 0, endColumnIndex: lastCol },
@@ -229,13 +286,52 @@ export async function createMonthlyTab(
         fields: 'userEnteredFormat(borders)',
       },
     },
-    {
+  ];
+  MONTHLY_BLOCKS.forEach((block, b) => {
+    const sectionRow = b * ROWS_PER_BLOCK;
+    const headerRow = sectionRow + 1;
+    const dataStart = sectionRow + 2;
+    const dataEnd = (b + 1) * ROWS_PER_BLOCK;
+    // Pita judul blok selebar tab.
+    requests.push({
       repeatCell: {
-        range: { sheetId, startRowIndex: 1, endRowIndex: lastRow, startColumnIndex: 1, endColumnIndex: lastCol },
-        cell: { userEnteredFormat: { backgroundColor: green, horizontalAlignment: 'RIGHT' } },
-        fields: 'userEnteredFormat(backgroundColor,horizontalAlignment)',
+        range: { sheetId, startRowIndex: sectionRow, endRowIndex: sectionRow + 1, startColumnIndex: 0, endColumnIndex: lastCol },
+        cell: {
+          userEnteredFormat: {
+            backgroundColor: block.fill,
+            textFormat: block.textWhite
+              ? { bold: true, fontSize: 11, foregroundColor: white }
+              : { bold: true, fontSize: 11 },
+          },
+        },
+        fields: 'userEnteredFormat(backgroundColor,textFormat)',
       },
-    },
+    });
+    // Baris header blok: hijau, tebal, tengah.
+    requests.push({
+      repeatCell: {
+        range: { sheetId, startRowIndex: headerRow, endRowIndex: headerRow + 1, startColumnIndex: 0, endColumnIndex: lastCol },
+        cell: { userEnteredFormat: { backgroundColor: green, horizontalAlignment: 'CENTER', textFormat: { bold: true, fontSize: 11 } } },
+        fields: 'userEnteredFormat(backgroundColor,horizontalAlignment,textFormat)',
+      },
+    });
+    // Sel data: putih, angka rata kanan.
+    requests.push({
+      repeatCell: {
+        range: { sheetId, startRowIndex: dataStart, endRowIndex: dataEnd, startColumnIndex: 0, endColumnIndex: lastCol },
+        cell: { userEnteredFormat: { backgroundColor: white } },
+        fields: 'userEnteredFormat(backgroundColor)',
+      },
+    });
+    requests.push({
+      repeatCell: {
+        range: { sheetId, startRowIndex: dataStart, endRowIndex: dataEnd, startColumnIndex: 1, endColumnIndex: lastCol },
+        cell: { userEnteredFormat: { horizontalAlignment: 'RIGHT' } },
+        fields: 'userEnteredFormat(horizontalAlignment)',
+      },
+    });
+  });
+  requests.push(
     {
       updateSheetProperties: {
         properties: { sheetId, gridProperties: { frozenRowCount: 1, frozenColumnCount: 1 } },
@@ -263,7 +359,8 @@ export async function createMonthlyTab(
         fields: 'pixelSize',
       },
     },
-  ]);
+  );
+  await batchUpdateSheets(env, requests);
 
   return { created: true, title };
 }

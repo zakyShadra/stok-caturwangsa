@@ -198,6 +198,37 @@ export async function insertRowAtTop(
       },
     },
   ]);
+  // Salin format baris 3 (baris data lama paling atas) ke baris 2 yang
+  // baru, supaya baris scan terbaru ikut rapi (border). Kegagalan di
+  // sini tidak boleh menggagalkan scan, jadi ditangkap diam-diam.
+  try {
+    await batchUpdateSheets(env, [
+      {
+        copyPaste: {
+          source: {
+            sheetId: LOG_SHEET_ID,
+            startRowIndex: 2,
+            endRowIndex: 3,
+            startColumnIndex: 0,
+            endColumnIndex: 9,
+          },
+          destination: {
+            sheetId: LOG_SHEET_ID,
+            startRowIndex: 1,
+            endRowIndex: 2,
+            startColumnIndex: 0,
+            endColumnIndex: 9,
+          },
+          pasteType: 'PASTE_FORMAT',
+        },
+      },
+    ]);
+  } catch (e) {
+    console.error(
+      'Gagal menyalin format baris log:',
+      e instanceof Error ? e.message : e,
+    );
+  }
   await updateValues(env, "'Log Transaksi'!A2:H2", values, 'RAW');
   await updateValues(env, "'Log Transaksi'!I2", [[tanggalWib]], 'USER_ENTERED');
 }
