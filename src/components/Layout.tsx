@@ -136,6 +136,9 @@ export default function Layout() {
 
   const activePath = location.pathname;
 
+  // Halaman scan tidak pakai footer: layarnya penuh untuk kamera
+  // (sama seperti BottomNav yang menyembunyikan diri di sana).
+
   // Pill diukur relatif ke nav. Karena nav bisa bergeser sendiri
   // (overflow-y-auto), pengukuran harus menambahkan nav.scrollTop:
   // posisi pill di dalam konten nav, bukan di jendela yang kelihatan.
@@ -256,6 +259,16 @@ export default function Layout() {
           <div key={location.pathname} className="page-enter">
             <Outlet />
           </div>
+          {/* Footer: garis hairline + copyright, di bawah konten tiap
+              halaman. Di HP, padding bawah konten (pb-32) menjaga
+              footer tetap di atas BottomNav. Tahun dinamis. */}
+          {!location.pathname.startsWith('/scan') ? (
+            <footer className="mt-8 border-t border-hairline pt-4 text-center">
+              <p className="text-sm text-ink-muted">
+                © {new Date().getFullYear()} PT Catur Wangsa Indah. All rights reserved.
+              </p>
+            </footer>
+          ) : null}
         </div>
       </main>
 
