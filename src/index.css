@@ -2,6 +2,30 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Variabel CSS yang dipakai komponen grafik Bklit (dipetakan ke token
+   aplikasi, bukan nilai default shadcn). Tanpa ini, label dan garis
+   grid grafik tidak punya warna. */
+:root {
+  --background: #ffffff;
+  --foreground: #2f3b45;
+  --muted-foreground: #5a6b76;
+  --chart-background: #ffffff;
+  --chart-foreground: #2f3b45;
+  --chart-foreground-muted: #5a6b76;
+  --chart-label: #5a6b76;
+  --chart-grid: #d6edea;
+  --chart-line-primary: #0f6f72;
+  --chart-line-secondary: #d97706;
+  --chart-1: #0f6f72;
+  --chart-2: #d97706;
+  --chart-3: #00b9be;
+  --chart-4: #1e9e6a;
+  --chart-5: #0e7fa8;
+  --chart-tooltip-background: #ffffff;
+  --color-zinc-500: #5a6b76;
+  --radius-xl: 16px;
+}
+
 /* Token dari DESIGN.md. Latar halaman: gradient mesh lembut warna
    perusahaan (mint + putih + teal muda), bukan satu warna datar.
    Bukan gradient ungu/biru generik. */

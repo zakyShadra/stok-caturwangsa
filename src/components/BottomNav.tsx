@@ -1,7 +1,8 @@
-// Navigasi bawah mobile: 5 item (Beranda, Absensi, Stok, Riwayat,
-// Akun). Satu pill yang BERJALAN ke item aktif (code-xr pola 1),
-// bukan tiap item menyala sendiri. Posisi diukur dari DOM, digerakkan
-// dengan transform, 0.45s cubic-bezier(.22,1,.36,1).
+// Navigasi bawah mobile: 6 item (Beranda, Absensi, Stok, Riwayat,
+// Pemasaran, Akun). Satu pill yang BERJALAN ke item aktif (code-xr
+// pola 1), bukan tiap item menyala sendiri. Posisi diukur dari DOM,
+// digerakkan dengan transform, 0.45s cubic-bezier(.22,1,.36,1).
+// Label 13px supaya "Pemasaran" muat dalam satu baris di HP 360px.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 
@@ -10,6 +11,7 @@ const ITEMS = [
   { to: '/absensi', label: 'Absensi', icon: ClipboardIcon },
   { to: '/stok', label: 'Stok', icon: BoxIcon },
   { to: '/riwayat', label: 'Riwayat', icon: ClockIcon },
+  { to: '/pemasaran', label: 'Pemasaran', icon: TrendIcon },
   { to: '/akun', label: 'Akun', icon: PersonIcon },
 ];
 
@@ -47,6 +49,15 @@ function ClockIcon({ active }: { active: boolean }) {
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={active ? '#0F6F72' : '#5A6B76'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+
+function TrendIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={active ? '#0F6F72' : '#5A6B76'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m3 17 6-6 4 4 8-8" />
+      <path d="M14 7h7v7" />
     </svg>
   );
 }
@@ -93,7 +104,7 @@ export default function BottomNav() {
     measure();
     window.addEventListener('resize', measure);
     // ResizeObserver: ukur ulang kalau layout berubah (font masuk,
-    // CSS telat, rotasi HP), bukan cuma saat resize viewport.
+    // CSS lambat dimuat, rotasi HP), bukan cuma saat resize viewport.
     const observer = new ResizeObserver(measure);
     if (gridRef.current) observer.observe(gridRef.current);
     return () => {
@@ -116,7 +127,7 @@ export default function BottomNav() {
       className="fixed inset-x-0 bottom-0 z-40 border-t border-hairline bg-surface/95 backdrop-blur-sm"
       aria-label="Navigasi utama"
     >
-      <div ref={gridRef} className="relative mx-auto grid max-w-[720px] grid-cols-5">
+      <div ref={gridRef} className="relative mx-auto grid max-w-[720px] grid-cols-6">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute top-2 h-[calc(100%-16px)] rounded-button bg-primary-soft/70 transition-all duration-500"
@@ -138,7 +149,7 @@ export default function BottomNav() {
               aria-current={active ? 'page' : undefined}
             >
               <Icon active={active} />
-              <span className={`text-base font-bold ${active ? 'text-primary-deep' : 'text-ink-muted'}`}>
+              <span className={`whitespace-nowrap text-[13px] font-bold leading-tight ${active ? 'text-primary-deep' : 'text-ink-muted'}`}>
                 {item.label}
               </span>
             </NavLink>

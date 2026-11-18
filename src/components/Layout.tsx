@@ -1,6 +1,6 @@
 // Layout aplikasi gabungan. Desktop (md ke atas): sidebar 240px di kiri,
-// latar primary-deep, nav dibagi grup ABSENSI dan STOK. HP: sidebar
-// disembunyikan, navigasi pindah ke BottomNav.
+// latar primary-deep, nav dibagi grup UTAMA, ABSENSI, STOK, PEMASARAN.
+// HP: sidebar disembunyikan, navigasi pindah ke BottomNav.
 // Sidebar punya satu pill yang BERJALAN ke item aktif (code-xr pola 6):
 // posisinya diukur dari DOM item aktif, digerakkan dengan transform.
 import { useLayoutEffect, useRef, useState } from 'react';
@@ -42,6 +42,15 @@ function IconChart() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M4 20V10M10 20V4M16 20v-8M22 20H2" />
+    </svg>
+  );
+}
+
+function IconTrend() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m3 17 6-6 4 4 8-8" />
+      <path d="M14 7h7v7" />
     </svg>
   );
 }
@@ -95,10 +104,11 @@ function IconLogout() {
   );
 }
 
-// Nav dibagi 3 grup: UTAMA, ABSENSI, STOK. Grup dipisah label
+// Nav dibagi 4 grup: UTAMA, ABSENSI, STOK, PEMASARAN. Grup dipisah label
 // small-caps + padding, bukan garis divider. Karyawan hanya muncul
 // untuk Admin (satu-satunya yang mengelola karyawan); Laporan untuk
-// Admin/Bos/Manager; Staff tidak melihat keduanya.
+// Admin/Bos/Manager; Staff tidak melihat keduanya. Pemasaran untuk
+// semua role.
 const NAV_GROUPS = [
   {
     label: 'Utama',
@@ -121,6 +131,12 @@ const NAV_GROUPS = [
       { to: '/scan/keluar', label: 'Barang Keluar', Icon: IconArrowOut, roles: ['Admin', 'Bos', 'Manager', 'Staff'] },
       { to: '/stok', label: 'Lihat Stok', Icon: IconBox, roles: ['Admin', 'Bos', 'Manager', 'Staff'] },
       { to: '/riwayat', label: 'Riwayat', Icon: IconClock, roles: ['Admin', 'Bos', 'Manager', 'Staff'] },
+    ],
+  },
+  {
+    label: 'Pemasaran',
+    items: [
+      { to: '/pemasaran', label: 'Pemasaran', Icon: IconTrend, roles: ['Admin', 'Bos', 'Manager', 'Staff'] },
     ],
   },
 ];
