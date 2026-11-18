@@ -92,8 +92,9 @@ export default function Marketing() {
 
       {data ? (
         <div className="space-y-6">
-          {/* Ringkasan total */}
-          <div className="grid grid-cols-3 gap-3">
+          {/* Ringkasan total: menumpuk di HP (angka Rp31.457.200 tidak
+              muat kalau 3 kolom di layar 390px), 3 kolom di desktop. */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="entrance rounded-card border border-hairline bg-surface p-4 text-center shadow-card">
               <p className="text-sm font-bold text-ink-muted">Total Penjualan</p>
               <p className="mt-1 text-lg font-bold text-primary-deep">{fmtRp(data.totalPenjualan)}</p>
