@@ -1,13 +1,17 @@
 // State absensi yang dipakai bersama Beranda, halaman Absensi, dan
 // Laporan: catatan absen, jam absen masuk/pulang saya, bukti kerja,
 // dan bukti verifikasi (lokasi GPS + selfie) tiap karyawan.
-// Penyimpanan sementara (belum ada backend): status absen saya hari
-// ini dan verifikasi selfie (GPS + foto) disimpan di localStorage,
-// supaya tidak hilang kalau halaman di-refresh. Bukti kerja masih
-// di memori saja: filenya belum bisa disimpan.
+// Penyimpanan sementara (belum ada backend):
+// - Status absen saya hari ini: localStorage PER AKUN (kunci memakai
+//   email), supaya ganti akun di perangkat yang sama tidak saling
+//   menukar status absen. Hanya berlaku untuk tanggal hari ini.
+// - Verifikasi selfie: localStorage, supaya tidak hilang kalau
+//   halaman di-refresh.
+// - Bukti kerja masih di memori saja: filenya belum bisa disimpan.
 // Nanti data ini tinggal di Workers + D1, file di-upload ke R2.
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { useAuth } from './auth';
 import {
   LATE_CUTOFF,
   OFFICE_LOCATION,
@@ -112,9 +116,15 @@ function formatSize(bytes: number): string {
 
 let evidenceCounter = 100;
 
-// Status absen hari ini disimpan di localStorage, supaya tidak hilang
-// kalau halaman di-refresh. Hanya berlaku untuk tanggal hari ini.
-const CHECKIN_KEY = 'sabunpalem-absen-hari-ini';
+// --- Status absen saya hari ini: satu kunci per akun. ---
+// Kunci lama (satu kunci untuk semua akun di perangkat) pernah bikin
+// status absen Budi muncul di kartu "Absen saya" akun lain. Kunci
+// lama dihapus sekali saat provider pertama dimuat.
+const LEGACY_CHECKIN_KEY = 'sabunpalem-absen-hari-ini';
+
+function checkInKeyFor(email: string | null | undefined): string | null {
+  return email ? `${LEGACY_CHECKIN_KEY}-${email}` : null;
+}
 
 interface SavedCheckIn {
   date: string;
@@ -123,10 +133,11 @@ interface SavedCheckIn {
   status: 'Hadir' | 'Telat' | null;
 }
 
-function loadCheckIn(): SavedCheckIn {
+function loadCheckIn(key: string | null): SavedCheckIn {
   const empty: SavedCheckIn = { date: '', checkIn: null, checkOut: null, status: null };
+  if (!key) return empty;
   try {
-    const raw = localStorage.getItem(CHECKIN_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return empty;
     const parsed = JSON.parse(raw) as SavedCheckIn;
     if (parsed.date !== jakartaDate(0)) return empty;
@@ -136,9 +147,10 @@ function loadCheckIn(): SavedCheckIn {
   }
 }
 
-function saveCheckIn(saved: SavedCheckIn) {
+function saveCheckIn(key: string | null, saved: SavedCheckIn) {
+  if (!key) return;
   try {
-    localStorage.setItem(CHECKIN_KEY, JSON.stringify(saved));
+    localStorage.setItem(key, JSON.stringify(saved));
   } catch {
     // localStorage penuh / tidak tersedia: abaikan, state memori tetap jalan.
   }
@@ -170,11 +182,29 @@ function saveVerification(byEmployee: Record<number, EmployeeVerification>) {
 }
 
 export function AttendanceProvider({ children }: { children: ReactNode }) {
-  const [saved, setSaved] = useState<SavedCheckIn>(loadCheckIn);
+  const { user } = useAuth();
+  const userEmail = user?.email ?? null;
+
+  const [saved, setSaved] = useState<SavedCheckIn>(() => loadCheckIn(checkInKeyFor(userEmail)));
   const [records, setRecords] = useState<AttendanceRecord[]>(() => getAttendance());
   const [evidenceByEmployee, setEvidenceByEmployee] = useState<Record<number, EvidenceFile[]>>(seedEvidence);
   const [verificationByEmployee, setVerificationByEmployee] =
     useState<Record<number, EmployeeVerification>>(loadVerification);
+
+  // Hapus kunci lama (satu kunci untuk semua akun) sekali saja.
+  useEffect(() => {
+    try {
+      localStorage.removeItem(LEGACY_CHECKIN_KEY);
+    } catch {
+      // abaikan
+    }
+  }, []);
+
+  // Ganti akun = muat ulang status absen milik akun itu. Tanpa ini,
+  // status absen akun sebelumnya ikut terbawa ke akun baru.
+  useEffect(() => {
+    setSaved(loadCheckIn(checkInKeyFor(userEmail)));
+  }, [userEmail]);
 
   const myCheckIn = saved.checkIn;
   const myCheckOut = saved.checkOut;
@@ -203,7 +233,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       const status = time > LATE_CUTOFF ? 'Telat' : 'Hadir';
       const next: SavedCheckIn = { date: today, checkIn: time, checkOut: null, status };
       setSaved(next);
-      saveCheckIn(next);
+      saveCheckIn(checkInKeyFor(userEmail), next);
       if (employeeId !== null) {
         upsertRecord({ employeeId, date: today, checkIn: time, checkOut: null, status });
         setVerificationByEmployee((prev) => {
@@ -216,16 +246,17 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    [upsertRecord],
+    [upsertRecord, userEmail],
   );
 
   const checkOut = useCallback(
     (v: CheckVerification, employeeId: number | null) => {
       const time = jakartaTime();
       const today = jakartaDate(0);
+      const key = checkInKeyFor(userEmail);
       setSaved((prev) => {
         const next: SavedCheckIn = { ...prev, checkOut: time };
-        saveCheckIn(next);
+        saveCheckIn(key, next);
         return next;
       });
       if (employeeId !== null) {
@@ -244,7 +275,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    [],
+    [userEmail],
   );
 
   const addEvidence = useCallback((employeeId: number, files: File[]) => {

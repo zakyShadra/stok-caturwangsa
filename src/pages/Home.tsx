@@ -205,19 +205,12 @@ export default function Home() {
     </>
   );
 
+  // Baris status sengaja ditulis satu baris tanpa jeda antar ekspresi:
+  // jeda baris di JSX sempat membuat spasi muncul sebelum koma
+  // ("Telat , pulang pukul ..."). Satu baris = koma menempel ke badge.
   const myStatusLine = myCheckIn ? (
     <p className="mt-4 text-lg text-ink">
-      Anda absen masuk pukul <span className="font-bold tabular-nums">{myCheckIn}</span>
-      {myStatus ? (
-        <span className="ml-2">
-          <AttendanceBadge status={myStatus} />
-        </span>
-      ) : null}
-      {myCheckOut ? (
-        <span>
-          , pulang pukul <span className="font-bold tabular-nums">{myCheckOut}</span>
-        </span>
-      ) : null}
+      Anda absen masuk pukul <span className="font-bold tabular-nums">{myCheckIn}</span>{myStatus ? <span className="ml-2"><AttendanceBadge status={myStatus} /></span> : null}{myCheckOut ? <span>, pulang pukul <span className="font-bold tabular-nums">{myCheckOut}</span></span> : null}
     </p>
   ) : null;
 
@@ -431,21 +424,11 @@ export default function Home() {
               <p className="mt-1 text-base text-ink-muted">
                 <span className="font-bold text-primary-deep tabular-nums">{clock}</span> WIB
               </p>
+              {/* Baris status satu baris tanpa jeda antar ekspresi, sama
+                  seperti kartu staf: koma harus menempel ke badge. */}
               {myCheckIn ? (
                 <p className="mt-1 text-base text-ink">
-                  Masuk pukul{' '}
-                  <span className="font-bold text-ink tabular-nums">{myCheckIn}</span>
-                  {myStatus ? (
-                    <span className="ml-2">
-                      <AttendanceBadge status={myStatus} />
-                    </span>
-                  ) : null}
-                  {myCheckOut ? (
-                    <span>
-                      {', pulang pukul '}
-                      <span className="font-bold text-ink tabular-nums">{myCheckOut}</span>
-                    </span>
-                  ) : null}
+                  Masuk pukul{' '}<span className="font-bold text-ink tabular-nums">{myCheckIn}</span>{myStatus ? <span className="ml-2"><AttendanceBadge status={myStatus} /></span> : null}{myCheckOut ? <span>, pulang pukul <span className="font-bold text-ink tabular-nums">{myCheckOut}</span></span> : null}
                 </p>
               ) : (
                 <p className="mt-1 text-base font-bold text-warning-ink">
