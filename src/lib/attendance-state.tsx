@@ -5,8 +5,9 @@
 // - Status absen saya hari ini: localStorage PER AKUN (kunci memakai
 //   email), supaya ganti akun di perangkat yang sama tidak saling
 //   menukar status absen. Hanya berlaku untuk tanggal hari ini.
-// - Verifikasi selfie: localStorage, supaya tidak hilang kalau
-//   halaman di-refresh.
+// - Catatan absen (termasuk status persetujuan Bos) dan verifikasi
+//   selfie: localStorage, supaya tidak hilang kalau halaman
+//   di-refresh. Catatan lama (sebelum bulan ini) dibuang saat dimuat.
 // - Bukti kerja masih di memori saja: filenya belum bisa disimpan.
 // Nanti data ini tinggal di Workers + D1, file di-upload ke R2.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
@@ -15,12 +16,13 @@ import { useAuth } from './auth';
 import {
   LATE_CUTOFF,
   OFFICE_LOCATION,
+  USERS,
   getAttendance,
   haversineDistanceMeters,
   jakartaDate,
   jakartaTime,
 } from './attendance';
-import type { AttendanceRecord, CheckVerification, EvidenceFile } from './attendance';
+import type { ApprovalStatus, AttendanceRecord, CheckVerification, EvidenceFile } from './attendance';
 
 export interface EmployeeVerification {
   masuk?: CheckVerification;
@@ -30,6 +32,7 @@ export interface EmployeeVerification {
 interface AttendanceStateValue {
   records: AttendanceRecord[];
   upsertRecord: (rec: AttendanceRecord) => void;
+  setApproval: (employeeId: number, date: string, approval: ApprovalStatus) => void;
   myCheckIn: string | null;
   myCheckOut: string | null;
   myStatus: 'Hadir' | 'Telat' | null;
@@ -42,6 +45,12 @@ interface AttendanceStateValue {
 }
 
 const AttendanceStateContext = createContext<AttendanceStateValue | null>(null);
+
+// Akun staf (Budi Santoso) adalah satu-satunya akun yang terikat ke
+// karyawan di daftar absensi (id 1). Dipakai saat Bos menolak absen:
+// status absen tersimpan staf itu dihapus supaya dia bisa absen ulang.
+const STAFF_EMPLOYEE_ID = 1;
+const STAFF_EMAIL = USERS.find((u) => u.role === 'Staff')?.email ?? 'staff@sabunpalem.co.id';
 
 // Thumbnail untuk file gambar yang sudah ada: digambar di canvas
 // (latar teal + nama file), jadi Bos/Manager bisa melihat wujudnya
@@ -156,6 +165,30 @@ function saveCheckIn(key: string | null, saved: SavedCheckIn) {
   }
 }
 
+// --- Catatan absen: disimpan supaya persetujuan Bos dan absen yang
+// sudah dicatat tidak hilang kalau halaman di-refresh. ---
+const RECORDS_KEY = 'sabunpalem-absensi';
+
+function loadRecords(): AttendanceRecord[] {
+  const seed = getAttendance();
+  try {
+    const raw = localStorage.getItem(RECORDS_KEY);
+    if (!raw) return seed;
+    const parsed = JSON.parse(raw) as { records?: AttendanceRecord[] };
+    const monthStart = `${jakartaDate(0).slice(0, 7)}-01`;
+    const saved = (parsed.records ?? []).filter((r) => r.date >= monthStart);
+    const merged = [...saved];
+    for (const s of seed) {
+      if (!merged.some((r) => r.employeeId === s.employeeId && r.date === s.date)) {
+        merged.push(s);
+      }
+    }
+    return merged;
+  } catch {
+    return seed;
+  }
+}
+
 // --- Verifikasi absen (GPS + selfie): disimpan supaya fotonya tetap
 // tampil setelah halaman di-refresh. Hanya untuk tanggal hari ini. ---
 const VERIF_KEY = 'sabunpalem-verifikasi-hari-ini';
@@ -186,7 +219,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
   const userEmail = user?.email ?? null;
 
   const [saved, setSaved] = useState<SavedCheckIn>(() => loadCheckIn(checkInKeyFor(userEmail)));
-  const [records, setRecords] = useState<AttendanceRecord[]>(() => getAttendance());
+  const [records, setRecords] = useState<AttendanceRecord[]>(loadRecords);
   const [evidenceByEmployee, setEvidenceByEmployee] = useState<Record<number, EvidenceFile[]>>(seedEvidence);
   const [verificationByEmployee, setVerificationByEmployee] =
     useState<Record<number, EmployeeVerification>>(loadVerification);
@@ -206,6 +239,16 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     setSaved(loadCheckIn(checkInKeyFor(userEmail)));
   }, [userEmail]);
 
+  // Simpan catatan absen setiap kali berubah (persetujuan Bos ikut
+  // tersimpan, jadi tidak kembali pending setelah refresh).
+  useEffect(() => {
+    try {
+      localStorage.setItem(RECORDS_KEY, JSON.stringify({ records }));
+    } catch {
+      // abaikan, state memori tetap jalan
+    }
+  }, [records]);
+
   const myCheckIn = saved.checkIn;
   const myCheckOut = saved.checkOut;
   const myStatus = saved.status;
@@ -222,8 +265,36 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  // Persetujuan Bos: ubah status persetujuan satu catatan. Kalau absen
+  // HARI INI ditolak, status absen tersimpan staf itu dihapus supaya
+  // dia bisa absen ulang (absen ulang membuat catatan pending baru).
+  // Penolakan untuk tanggal lain (misal pengajuan Cuti besok) tidak
+  // menyentuh status absen hari ini.
+  const setApproval = useCallback(
+    (employeeId: number, date: string, approval: ApprovalStatus) => {
+      setRecords((prev) =>
+        prev.map((r) =>
+          r.employeeId === employeeId && r.date === date ? { ...r, approval } : r,
+        ),
+      );
+      if (approval === 'rejected' && employeeId === STAFF_EMPLOYEE_ID && date === jakartaDate(0)) {
+        try {
+          localStorage.removeItem(checkInKeyFor(STAFF_EMAIL) ?? '');
+        } catch {
+          // abaikan
+        }
+        if (userEmail === STAFF_EMAIL) {
+          setSaved({ date: '', checkIn: null, checkOut: null, status: null });
+        }
+      }
+    },
+    [userEmail],
+  );
+
   // Absen masuk: catat jam + status, simpan verifikasi (GPS + selfie),
   // dan tambahkan catatan ke daftar absensi (kalau employeeId ada).
+  // Catatan baru berstatus pending sampai Bos menyetujui. Absen ulang
+  // setelah ditolak membuat catatan pending baru.
   // Admin/Manager tidak ada di daftar karyawan, jadi employeeId-nya
   // null: jam absen mereka tetap tersimpan untuk akun mereka sendiri.
   const checkIn = useCallback(
@@ -235,7 +306,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       setSaved(next);
       saveCheckIn(checkInKeyFor(userEmail), next);
       if (employeeId !== null) {
-        upsertRecord({ employeeId, date: today, checkIn: time, checkOut: null, status });
+        upsertRecord({ employeeId, date: today, checkIn: time, checkOut: null, status, approval: 'pending' });
         setVerificationByEmployee((prev) => {
           const nextV = {
             ...prev,
@@ -311,6 +382,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     () => ({
       records,
       upsertRecord,
+      setApproval,
       myCheckIn,
       myCheckOut,
       myStatus,
@@ -324,6 +396,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     [
       records,
       upsertRecord,
+      setApproval,
       myCheckIn,
       myCheckOut,
       myStatus,

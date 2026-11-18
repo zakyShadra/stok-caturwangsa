@@ -1,9 +1,14 @@
-// Halaman Absensi. Isinya:
-// - Pilih tanggal, lihat siapa yang hadir/telat/izin hari itu.
-// - Manager/Admin/Bos bisa menandai Izin/Cuti untuk karyawan, dan
-//   melihat bukti kerja yang dilampirkan tiap karyawan.
-// - Staf hanya melihat riwayat absensi sendiri, dan melampirkan
-//   bukti kerjaan hari ini (foto/dokumen) setelah absen masuk.
+// Halaman Absensi.
+// - Staf: kartu bukti kerja (upload setelah absen masuk), form
+//   pengajuan Izin/Cuti, dan riwayat absennya sendiri.
+// - Bos: antrean "Menunggu persetujuan" (absen + pengajuan Izin/Cuti)
+//   dengan tombol Setujui/Tolak, plus kartu per karyawan.
+// - Manager/Admin: melihat antrean dan statusnya saja, tanpa tombol
+//   aksi (mereka tidak menyetujui apa pun).
+// Rekap bulanan hanya menghitung catatan yang sudah disetujui Bos;
+// yang pending ditampilkan terpisah, yang ditolak tidak dihitung.
+// Foto selfie absen (jam + jarak dari kantor) bisa diketuk untuk
+// diperbesar lewat lightbox.
 import { createPortal } from 'react-dom';
 import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -14,8 +19,30 @@ import {
   formatDateID,
   jakartaDate,
 } from '../lib/attendance';
-import type { CheckVerification, EvidenceFile } from '../lib/attendance';
-import { AttendanceBadge, BigButton, EmptyState, PageHeader } from '../components/ui';
+import type { ApprovalStatus, CheckVerification, EvidenceFile } from '../lib/attendance';
+import { AttendanceBadge, BigButton, EmptyState, PageHeader, SegmentedControl } from '../components/ui';
+
+// Badge status persetujuan Bos: Menunggu persetujuan (oranye),
+// Disetujui (hijau), Ditolak (merah). Izin/Cuti yang pending tampil
+// sebagai badge "Izin" + badge "Menunggu persetujuan".
+function ApprovalBadge({ approval }: { approval: ApprovalStatus }) {
+  const cls =
+    approval === 'approved'
+      ? 'bg-success/10 text-success-ink'
+      : approval === 'rejected'
+        ? 'bg-error/10 text-error'
+        : 'bg-warning/10 text-warning-ink';
+  const dot =
+    approval === 'approved' ? 'bg-success' : approval === 'rejected' ? 'bg-error' : 'bg-warning';
+  const label =
+    approval === 'approved' ? 'Disetujui' : approval === 'rejected' ? 'Ditolak' : 'Menunggu persetujuan';
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm font-bold ${cls}`}>
+      <span className={`h-2 w-2 rounded-full ${dot}`} />
+      {label}
+    </span>
+  );
+}
 
 function PersonIcon() {
   return (
@@ -136,17 +163,17 @@ function VerificationRow({
 export default function Attendance() {
   const { user } = useAuth();
   const isStaff = user?.role === 'Staff';
-  const { records, upsertRecord, myCheckIn, evidenceByEmployee, verificationByEmployee, addEvidence, removeEvidence } = useAttendanceState();
+  const isBos = user?.role === 'Bos';
+  const { records, upsertRecord, setApproval, myCheckIn, evidenceByEmployee, verificationByEmployee, addEvidence, removeEvidence } = useAttendanceState();
   const [selectedDate, setSelectedDate] = useState(jakartaDate(0));
   const [lightbox, setLightbox] = useState<{ url: string; label: string } | null>(null);
+  const [note, setNote] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Form tandai izin/cuti (Admin/Bos/Manager): disembunyikan di balik
-  // tombol, baru muncul saat ditekan.
-  const [showMark, setShowMark] = useState(false);
-  const [markEmployee, setMarkEmployee] = useState(EMPLOYEES[0].id);
-  const [markStatus, setMarkStatus] = useState<'Izin' | 'Cuti'>('Izin');
-  const [markNote, setMarkNote] = useState('');
+  // Pengajuan Izin/Cuti (staf): tanggal + jenis. Pengajuan berstatus
+  // pending sampai Bos menyetujui atau menolak.
+  const [requestDate, setRequestDate] = useState(jakartaDate(0));
+  const [requestType, setRequestType] = useState<'Izin' | 'Cuti'>('Izin');
 
   const dayRecords = useMemo(() => {
     const filtered = records.filter((r) => r.date === selectedDate);
@@ -157,16 +184,21 @@ export default function Attendance() {
     return filtered;
   }, [records, selectedDate, isStaff]);
 
+  // Antrean persetujuan: semua catatan pending, semua tanggal.
+  const pending = records.filter((r) => r.approval === 'pending');
+
   const employeeName = (id: number) => EMPLOYEES.find((e) => e.id === id)?.name ?? '-';
   const employeeDivision = (id: number) => EMPLOYEES.find((e) => e.id === id)?.division ?? '-';
 
-  // Rekap bulan ini (per karyawan).
+  // Rekap bulan ini (per karyawan): hanya yang sudah disetujui yang
+  // dihitung. Yang pending ditampilkan terpisah di bawah rekap.
   const monthPrefix = selectedDate.slice(0, 7);
-  const monthRecords = records.filter((r) => r.date.startsWith(monthPrefix));
+  const monthApproved = records.filter((r) => r.date.startsWith(monthPrefix) && r.approval === 'approved');
+  const monthPending = records.filter((r) => r.date.startsWith(monthPrefix) && r.approval === 'pending').length;
   const recap = useMemo(() => {
     const list = isStaff ? EMPLOYEES.filter((e) => e.id === 1) : EMPLOYEES;
     return list.map((e) => {
-      const mine = monthRecords.filter((r) => r.employeeId === e.id);
+      const mine = monthApproved.filter((r) => r.employeeId === e.id);
       return {
         employee: e,
         hadir: mine.filter((r) => r.status === 'Hadir').length,
@@ -174,30 +206,43 @@ export default function Attendance() {
         izin: mine.filter((r) => r.status === 'Izin' || r.status === 'Cuti').length,
       };
     });
-  }, [monthRecords, isStaff]);
+  }, [monthApproved, isStaff]);
 
-  // Bukti kerja hari ini: berapa dari yang hadir yang sudah melampirkan.
-  const presentToday = dayRecords.filter((r) => r.status === 'Hadir' || r.status === 'Telat');
+  // Bukti kerja hari ini: berapa dari yang hadir (yang sudah
+  // disetujui) yang sudah melampirkan.
+  const presentToday = dayRecords.filter(
+    (r) => (r.status === 'Hadir' || r.status === 'Telat') && r.approval === 'approved',
+  );
   const withEvidenceToday = presentToday.filter(
     (r) => (evidenceByEmployee[r.employeeId] ?? []).length > 0,
   ).length;
 
   const myEvidence = evidenceByEmployee[1] ?? [];
 
-  const handleMark = () => {
+  const handleRequest = (e: React.FormEvent) => {
+    e.preventDefault();
+    const existing = records.find((r) => r.employeeId === 1 && r.date === requestDate);
+    if (existing) {
+      setNote(`Tanggal ${formatDateID(requestDate)} sudah ada catatan absen, tidak bisa mengajukan lagi.`);
+      return;
+    }
     upsertRecord({
-      employeeId: markEmployee,
-      date: selectedDate,
+      employeeId: 1,
+      date: requestDate,
       checkIn: null,
       checkOut: null,
-      status: markStatus,
+      status: requestType,
+      approval: 'pending',
     });
-    setMarkNote(`${employeeName(markEmployee)} ditandai ${markStatus} untuk ${formatDateID(selectedDate)}.`);
+    setNote(
+      `Pengajuan ${requestType} untuk ${formatDateID(requestDate)} terkirim, menunggu persetujuan Bos.`,
+    );
   };
 
   const handleFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     addEvidence(1, Array.from(files));
+    setNote(`${files.length} file bukti kerja ditambahkan.`);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -218,6 +263,12 @@ export default function Attendance() {
         title="Absensi"
         subtitle={isStaff ? 'Riwayat absensi Anda' : 'Daftar kehadiran karyawan per hari'}
       />
+
+      {note ? (
+        <p className="mb-6 rounded-button bg-primary-soft/60 px-4 py-3 text-base font-bold text-primary-deep">
+          {note}
+        </p>
+      ) : null}
 
       {/* Bukti kerja saya (staf): muncul setelah absen masuk. */}
       {isStaff ? (
@@ -271,7 +322,117 @@ export default function Attendance() {
         </div>
       ) : null}
 
-      {/* Pilih tanggal + tombol tandai izin/cuti. */}
+      {/* Form pengajuan Izin/Cuti (staf). */}
+      {isStaff ? (
+        <form
+          onSubmit={handleRequest}
+          className="entrance mb-6 space-y-4 rounded-card border border-hairline bg-surface p-5 shadow-card"
+        >
+          <h2 className="text-lg font-bold text-ink">Ajukan Izin / Cuti</h2>
+          <p className="text-base text-ink-muted">
+            Pengajuan menunggu persetujuan Bos. Sebelum disetujui, statusnya
+            tampil sebagai Izin atau Cuti (menunggu).
+          </p>
+          <div>
+            <label htmlFor="req-date" className="mb-2 block text-base font-bold text-ink">
+              Tanggal
+            </label>
+            <input
+              id="req-date"
+              type="date"
+              value={requestDate}
+              onChange={(e) => setRequestDate(e.target.value)}
+              className="min-h-[56px] w-full rounded-button border border-hairline bg-surface px-4 text-lg text-ink focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25"
+            />
+          </div>
+          <div>
+            <p className="mb-2 text-base font-bold text-ink">Jenis pengajuan</p>
+            <SegmentedControl
+              options={[
+                { id: 'Izin', label: 'Izin' },
+                { id: 'Cuti', label: 'Cuti' },
+              ]}
+              value={requestType}
+              onChange={setRequestType}
+              label="Jenis pengajuan"
+            />
+          </div>
+          <BigButton type="submit" tone="primary" full>
+            Kirim Pengajuan
+          </BigButton>
+        </form>
+      ) : null}
+
+      {/* Antrean persetujuan (Bos/Admin/Manager): semua catatan pending,
+          semua tanggal. Tombol aksi hanya untuk Bos. */}
+      {!isStaff && pending.length > 0 ? (
+        <section className="entrance mb-6 rounded-card border border-warning/40 bg-surface p-5 shadow-card">
+          <h2 className="text-lg font-bold text-ink">Menunggu persetujuan ({pending.length})</h2>
+          <p className="mt-1 text-base text-ink-muted">
+            {isBos
+              ? 'Absen dan pengajuan Izin/Cuti di bawah ini menunggu keputusan Anda.'
+              : 'Absen dan pengajuan Izin/Cuti di bawah ini menunggu persetujuan Bos.'}
+          </p>
+          <div className="mt-4 space-y-3">
+            {pending.map((r) => {
+              const v = verificationByEmployee[r.employeeId]?.masuk;
+              const isLeave = r.status === 'Izin' || r.status === 'Cuti';
+              return (
+                <article
+                  key={`${r.employeeId}-${r.date}`}
+                  className="rounded-button border border-hairline bg-surface-soft p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <h3 className="text-base font-bold text-ink">{employeeName(r.employeeId)}</h3>
+                      <p className="text-base text-ink-muted">{formatDateID(r.date)}</p>
+                    </div>
+                    <AttendanceBadge status={r.status} />
+                  </div>
+                  {isLeave ? (
+                    <p className="mt-2 text-base text-ink">Pengajuan {r.status}.</p>
+                  ) : (
+                    <p className="mt-2 text-base text-ink">
+                      Masuk {r.checkIn ?? '-'}
+                      {r.checkOut ? `, pulang ${r.checkOut}` : ''}
+                    </p>
+                  )}
+                  {!isLeave && v ? (
+                    <div className="mt-3">
+                      <VerificationRow
+                        label="Masuk"
+                        data={v}
+                        employeeName={employeeName(r.employeeId)}
+                        onView={viewLightbox}
+                      />
+                    </div>
+                  ) : null}
+                  {isBos ? (
+                    <div className="mt-4 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setApproval(r.employeeId, r.date, 'approved')}
+                        className="btn-press flex min-h-[48px] flex-1 items-center justify-center rounded-button bg-success text-base font-bold text-white"
+                      >
+                        Setujui
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setApproval(r.employeeId, r.date, 'rejected')}
+                        className="btn-press flex min-h-[48px] flex-1 items-center justify-center rounded-button bg-error text-base font-bold text-white"
+                      >
+                        Tolak
+                      </button>
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
+      {/* Pilih tanggal + hitungan bukti kerja. */}
       <div className="entrance mb-6 rounded-card border border-hairline bg-surface p-5 shadow-card">
         <label htmlFor="tanggal" className="mb-2 block text-base font-bold text-ink">
           Pilih tanggal
@@ -285,70 +446,12 @@ export default function Attendance() {
         />
         <p className="mt-2 text-base text-ink-muted">{formatDateID(selectedDate)}</p>
         {!isStaff ? (
-          <>
-            <p className="mt-3 rounded-button bg-surface-soft px-4 py-3 text-base text-ink">
-              Bukti kerja: <span className="font-bold text-primary-deep tabular-nums">{withEvidenceToday} dari {presentToday.length}</span> yang
-              hadir sudah melampirkan bukti.
-            </p>
-            <div className="mt-4">
-              <BigButton tone="secondary" full onClick={() => setShowMark((v) => !v)}>
-                {showMark ? 'Tutup form izin / cuti' : 'Tandai Izin / Cuti'}
-              </BigButton>
-            </div>
-          </>
+          <p className="mt-3 rounded-button bg-surface-soft px-4 py-3 text-base text-ink">
+            Bukti kerja: <span className="font-bold text-primary-deep tabular-nums">{withEvidenceToday} dari {presentToday.length}</span> yang
+            hadir sudah melampirkan bukti.
+          </p>
         ) : null}
       </div>
-
-      {/* Form tandai izin/cuti. */}
-      {!isStaff && showMark ? (
-        <div className="entrance mb-6 rounded-card border border-hairline bg-surface p-5 shadow-card">
-          <h2 className="text-lg font-bold text-ink">Tandai Izin / Cuti</h2>
-          <div className="mt-4 space-y-4">
-            <div>
-              <label htmlFor="mark-emp" className="mb-2 block text-base font-bold text-ink">
-                Karyawan
-              </label>
-              <select
-                id="mark-emp"
-                value={markEmployee}
-                onChange={(e) => setMarkEmployee(Number(e.target.value))}
-                className="min-h-[56px] w-full rounded-button border border-hairline bg-surface px-4 text-lg text-ink focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25"
-              >
-                {EMPLOYEES.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.name} - {e.division}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <p className="mb-2 text-base font-bold text-ink">Status</p>
-              <div className="flex gap-2">
-                {(['Izin', 'Cuti'] as const).map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setMarkStatus(s)}
-                    className={`btn-press min-h-[56px] flex-1 rounded-button border text-lg font-bold transition-colors ${
-                      markStatus === s
-                        ? 'border-primary bg-primary text-white'
-                        : 'border-hairline bg-surface text-ink hover:bg-surface-soft'
-                    }`}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <BigButton tone="primary" full onClick={handleMark}>
-              Simpan
-            </BigButton>
-          </div>
-          {markNote ? (
-            <p className="mt-4 text-base font-bold text-primary-deep">{markNote}</p>
-          ) : null}
-        </div>
-      ) : null}
 
       {/* Daftar absen hari itu: kartu per karyawan, bukan tabel.
           Bos/Manager juga melihat bukti kerja tiap karyawan di kartunya. */}
@@ -362,6 +465,7 @@ export default function Attendance() {
         <div className="space-y-3">
           {dayRecords.map((r, i) => {
             const evidence = evidenceByEmployee[r.employeeId] ?? [];
+            const isLeave = r.status === 'Izin' || r.status === 'Cuti';
             return (
               <article
                 key={r.employeeId}
@@ -373,22 +477,27 @@ export default function Attendance() {
                     <h3 className="text-lg font-bold leading-snug text-ink">{employeeName(r.employeeId)}</h3>
                     <p className="text-base text-ink-muted">{employeeDivision(r.employeeId)}</p>
                   </div>
-                  <AttendanceBadge status={r.status} />
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 border-t border-hairline pt-3 text-center">
-                  <div>
-                    <div className="text-sm font-semibold text-ink-muted">Masuk</div>
-                    <div className="text-xl font-bold text-ink tabular-nums">
-                      {r.checkIn ?? <span className="text-ink-subtle">-</span>}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold text-ink-muted">Pulang</div>
-                    <div className="text-xl font-bold text-ink tabular-nums">
-                      {r.checkOut ?? <span className="text-ink-subtle">-</span>}
-                    </div>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <AttendanceBadge status={r.status} />
+                    <ApprovalBadge approval={r.approval} />
                   </div>
                 </div>
+                {!isLeave ? (
+                  <div className="mt-3 grid grid-cols-2 gap-2 border-t border-hairline pt-3 text-center">
+                    <div>
+                      <div className="text-sm font-semibold text-ink-muted">Masuk</div>
+                      <div className="text-xl font-bold text-ink tabular-nums">
+                        {r.checkIn ?? <span className="text-ink-subtle">-</span>}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-ink-muted">Pulang</div>
+                      <div className="text-xl font-bold text-ink tabular-nums">
+                        {r.checkOut ?? <span className="text-ink-subtle">-</span>}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 {!isStaff ? (
                   <div className="mt-3 border-t border-hairline pt-3">
                     <p className="text-base font-bold text-ink">
@@ -438,14 +547,38 @@ export default function Attendance() {
                     })()}
                   </div>
                 ) : null}
+                {isBos && r.approval === 'pending' ? (
+                  <div className="mt-4 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setApproval(r.employeeId, r.date, 'approved')}
+                      className="btn-press flex min-h-[48px] flex-1 items-center justify-center rounded-button bg-success text-base font-bold text-white"
+                    >
+                      Setujui
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setApproval(r.employeeId, r.date, 'rejected')}
+                      className="btn-press flex min-h-[48px] flex-1 items-center justify-center rounded-button bg-error text-base font-bold text-white"
+                    >
+                      Tolak
+                    </button>
+                  </div>
+                ) : null}
               </article>
             );
           })}
         </div>
       )}
 
-      {/* Rekap bulan ini. */}
+      {/* Rekap bulan ini: hanya yang sudah disetujui. */}
       <h2 className="mb-4 mt-8 text-xl font-bold text-ink">Rekap Bulan Ini</h2>
+      {monthPending > 0 ? (
+        <p className="mb-4 rounded-button bg-warning/10 px-4 py-3 text-base text-ink">
+          Menunggu persetujuan Bos:{' '}
+          <span className="font-bold text-warning-ink tabular-nums">{monthPending}</span> catatan bulan ini.
+        </p>
+      ) : null}
       <div className="space-y-3">
         {recap.map((r, i) => (
           <article
