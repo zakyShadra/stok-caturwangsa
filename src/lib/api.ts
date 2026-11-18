@@ -12,7 +12,7 @@
 //   GET  /api/log        -> riwayat transaksi (baca Sheet Log)
 //   GET  /api/monthly    -> stok akhir tiap produk per tanggal (?month=YYYY-MM)
 import { buildInitialTransactions, PRODUCTS } from './products';
-import type { LocationId, MonthlyData, MoveType, Product, Transaction } from './types';
+import type { DayStock, LocationId, MonthlyData, MoveType, Product, Transaction } from './types';
 
 export interface ScanInput {
   barcode: string | null; // null kalau pilih manual (produk tanpa barcode)
@@ -125,32 +125,45 @@ const localApi = {
       days,
       products: productsState.map((p) => {
         const mine = logState.filter((t) => t.productId === p.id);
-        let running = 0;
-        for (const t of mine) {
-          if (tanggalOf(t.timestamp) < monthStart) {
-            running += t.type === 'masuk' ? t.qty : -t.qty;
+        const dailyFor = (rows: Transaction[]): DayStock[] => {
+          let running = 0;
+          for (const t of rows) {
+            if (tanggalOf(t.timestamp) < monthStart) {
+              running += t.type === 'masuk' ? t.qty : -t.qty;
+            }
           }
-        }
-        const netByDay = new Map<number, number>();
-        for (const t of mine) {
-          const d = tanggalOf(t.timestamp);
-          if (d >= monthStart && d <= monthEnd) {
-            const day = Number(d.slice(8, 10));
-            netByDay.set(day, (netByDay.get(day) ?? 0) + (t.type === 'masuk' ? t.qty : -t.qty));
+          const netByDay = new Map<number, number>();
+          for (const t of rows) {
+            const d = tanggalOf(t.timestamp);
+            if (d >= monthStart && d <= monthEnd) {
+              const day = Number(d.slice(8, 10));
+              netByDay.set(day, (netByDay.get(day) ?? 0) + (t.type === 'masuk' ? t.qty : -t.qty));
+            }
           }
-        }
-        const daily = [];
-        for (let d = 1; d <= days; d++) {
-          const dateKey = `${month}-${String(d).padStart(2, '0')}`;
-          if (dateKey > todayWib) {
-            daily.push({ day: d, stock: null, delta: null });
-            continue;
+          const daily = [];
+          for (let d = 1; d <= days; d++) {
+            const dateKey = `${month}-${String(d).padStart(2, '0')}`;
+            if (dateKey > todayWib) {
+              daily.push({ day: d, stock: null, delta: null });
+              continue;
+            }
+            const delta = netByDay.get(d) ?? 0;
+            running += delta;
+            daily.push({ day: d, stock: running, delta });
           }
-          const delta = netByDay.get(d) ?? 0;
-          running += delta;
-          daily.push({ day: d, stock: running, delta });
-        }
-        return { id: p.id, name: p.name, unit: p.unit, daily };
+          return daily;
+        };
+        return {
+          id: p.id,
+          name: p.name,
+          unit: p.unit,
+          daily: dailyFor(mine),
+          dailyByLocation: {
+            klinik: dailyFor(mine.filter((t) => t.location === 'klinik')),
+            'gudang-kantor': dailyFor(mine.filter((t) => t.location === 'gudang-kantor')),
+            kantor: dailyFor(mine.filter((t) => t.location === 'kantor')),
+          },
+        };
       }),
     };
   },

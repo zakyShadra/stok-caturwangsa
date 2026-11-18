@@ -49,7 +49,8 @@ export interface MonthlyProduct {
   id: string;
   name: string;
   unit: string;
-  daily: DayStock[];
+  daily: DayStock[]; // total semua gudang
+  dailyByLocation: Record<LocationId, DayStock[]>;
 }
 
 export interface MonthlyData {

@@ -12,6 +12,8 @@
 // selalu sama dengan jumlah ketiga blok gudang karena semuanya
 // dihitung dari log yang sama.
 import { CATALOG } from './products';
+import type { LocationId } from './products';
+import { LOCATION_LABELS } from './products';
 import {
   batchUpdateSheets,
   getSheetTitles,
@@ -62,6 +64,7 @@ export interface MonthlyLogRow {
   type: string; // 'Masuk' | 'Keluar'
   qty: number;
   tanggal: string; // YYYY-MM-DD (WIB)
+  location: string; // label Lokasi di Log, misal 'Gudang Klinik'
 }
 
 export interface DayStock {
@@ -74,7 +77,8 @@ export interface MonthlyProduct {
   id: string;
   name: string;
   unit: string;
-  daily: DayStock[];
+  daily: DayStock[]; // total semua gudang
+  dailyByLocation: Record<LocationId, DayStock[]>;
 }
 
 export interface MonthlyData {
@@ -86,6 +90,10 @@ export interface MonthlyData {
 // Stok akhir tiap produk per tanggal dalam satu bulan, dihitung dari
 // log. Tanggal yang belum lewat mengembalikan null (bukan 0) supaya
 // aplikasi menampilkannya kosong, bukan seolah stoknya habis.
+// Dihitung sekali untuk total semua gudang (daily) dan sekali per
+// gudang (dailyByLocation), dari log yang sama, jadi total selalu
+// sama dengan jumlah ketiga gudang, sama seperti keempat blok di tab
+// bulanan Sheet.
 export function computeMonthly(
   rows: MonthlyLogRow[],
   year: number,
@@ -97,8 +105,7 @@ export function computeMonthly(
   const monthStart = `${monthKey}-01`;
   const monthEnd = `${monthKey}-${pad2(days)}`;
 
-  const products: MonthlyProduct[] = CATALOG.map((p) => {
-    const mine = rows.filter((r) => r.name === p.name);
+  const dailyFor = (mine: MonthlyLogRow[]): DayStock[] => {
     // Stok sebelum bulan ini (semua pergerakan bertanggal lebih awal).
     let running = 0;
     for (const r of mine) {
@@ -125,7 +132,24 @@ export function computeMonthly(
       running += delta;
       daily.push({ day: d, stock: running, delta });
     }
-    return { id: p.id, name: p.name, unit: p.unit, daily };
+    return daily;
+  };
+
+  const products: MonthlyProduct[] = CATALOG.map((p) => {
+    const mine = rows.filter((r) => r.name === p.name);
+    const byLocation = (id: LocationId) =>
+      dailyFor(mine.filter((r) => r.location === LOCATION_LABELS[id]));
+    return {
+      id: p.id,
+      name: p.name,
+      unit: p.unit,
+      daily: dailyFor(mine),
+      dailyByLocation: {
+        klinik: byLocation('klinik'),
+        'gudang-kantor': byLocation('gudang-kantor'),
+        kantor: byLocation('kantor'),
+      },
+    };
   });
 
   return { month: monthKey, days, products };

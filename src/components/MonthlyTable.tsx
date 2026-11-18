@@ -1,6 +1,9 @@
 // Tampilan bulanan: stok akhir tiap produk per tanggal. Baris = produk,
 // kolom = tanggal, sel = stok akhir hari itu + selisih dibanding hari
-// sebelumnya.
+// sebelumnya. Filter gudang (Semua / Klinik / Gdg Kantor / Kantor)
+// memilih angka mana yang tampil: total semua gudang, atau stok di
+// satu gudang saja. Angkanya dihitung Worker dari log yang sama dengan
+// keempat blok di tab bulanan Sheet, jadi selalu cocok.
 //
 // Geser di HP: kolom tanggal dikelompokkan per 3 kolom (satu panel
 // 192px, muat dalam area geser HP) dan panel-panel itu adalah titik
@@ -9,7 +12,16 @@
 // sehingga selalu kelihatan saat menggeser tanggal.
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
-import type { MonthlyData } from '../lib/types';
+import { LOCATIONS } from '../lib/types';
+import type { LocationId, MonthlyData } from '../lib/types';
+import { SegmentedControl } from './ui';
+
+type LocationFilter = 'semua' | LocationId;
+
+const LOCATION_OPTIONS: { id: LocationFilter; label: string }[] = [
+  { id: 'semua', label: 'Semua' },
+  ...LOCATIONS.map((l) => ({ id: l.id as LocationFilter, label: l.short })),
+];
 
 const TZ = 'Asia/Jakarta';
 const DATE_COL_PX = 64;
@@ -49,6 +61,7 @@ export default function MonthlyTable() {
   const [data, setData] = useState<MonthlyData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [location, setLocation] = useState<LocationFilter>('semua');
   // Panel snap harus muat dalam area geser supaya sekali geser pindah
   // satu panel penuh: 3 kolom di HP (192px), 4 kolom di layar lebar.
   const [colsPerPanel, setColsPerPanel] = useState(4);
@@ -99,6 +112,14 @@ export default function MonthlyTable() {
 
   return (
     <div>
+      {/* Filter gudang: total semua gudang atau satu gudang saja. */}
+      <SegmentedControl
+        options={LOCATION_OPTIONS}
+        value={location}
+        onChange={setLocation}
+        label="Filter gudang"
+      />
+
       {/* Navigasi bulan. */}
       <div className="mb-4 flex items-center justify-between gap-2">
         <button
@@ -173,7 +194,8 @@ export default function MonthlyTable() {
                     {data.products.map((p) => (
                       <div key={p.id} className="flex h-12 border-b border-hairline last:border-b-0">
                         {days.map((d) => {
-                          const cell = p.daily[d - 1];
+                          const series = location === 'semua' ? p.daily : p.dailyByLocation[location];
+                          const cell = series[d - 1];
                           return (
                             <div
                               key={d}
@@ -204,7 +226,11 @@ export default function MonthlyTable() {
       )}
 
       <p className="mt-3 text-base text-ink-muted">
-        Angka = stok akhir hari itu. Angka kecil di bawahnya = selisih dibanding hari sebelumnya
+        Angka = stok akhir hari itu
+        {location === 'semua'
+          ? ' (total semua gudang).'
+          : ` di ${LOCATIONS.find((l) => l.id === location)?.label ?? ''}.`}{' '}
+        Angka kecil di bawahnya = selisih dibanding hari sebelumnya
         (hijau naik, oranye turun).
       </p>
     </div>
