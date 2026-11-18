@@ -120,6 +120,7 @@ export default function Home() {
   const { user } = useAuth();
   const isStaff = user?.role === 'Staff';
   const isBos = user?.role === 'Bos';
+  const isAdmin = user?.role === 'Admin';
   const clock = useJakartaClock();
   const today = jakartaDate(0);
 
@@ -132,34 +133,58 @@ export default function Home() {
   // Flow absen (cek lokasi GPS lalu foto selfie). null = tidak jalan.
   const [flow, setFlow] = useState<'masuk' | 'pulang' | null>(null);
 
-  const { products, loading } = useStock();
+  const { products, loading, error: stockError, refresh: refreshStock } = useStock();
+  // Stok gagal dimuat dan belum ada data sama sekali: jangan tampilkan
+  // angka 0 yang menyesatkan, tampilkan pesan error + tombol coba lagi.
+  const stockUnavailable = !loading && stockError !== null && products.length === 0;
   const menipisList = products.filter((p) => stockStatus(p) === 'menipis');
   const habisCount = products.filter((p) => stockStatus(p) === 'habis').length;
   const totalUnits = products.reduce((sum, p) => sum + totalStock(p), 0);
 
+  // Rekap hanya menghitung catatan yang sudah disetujui Bos. Yang
+  // pending ditampilkan terpisah di panel perhatian; yang ditolak
+  // tidak masuk hitungan dan karyawannya kembali ke "Belum absen"
+  // (harus absen ulang).
   const todayRecords = records.filter((r) => r.date === today);
+  const approvedToday = todayRecords.filter((r) => r.approval === 'approved');
+  const pendingAll = records.filter((r) => r.approval === 'pending');
 
   const totalKaryawan = EMPLOYEES.length;
-  const hadir = todayRecords.filter((r) => r.status === 'Hadir').length;
-  const telatRecords = todayRecords.filter((r) => r.status === 'Telat');
+  const hadir = approvedToday.filter((r) => r.status === 'Hadir').length;
+  const telatRecords = approvedToday.filter((r) => r.status === 'Telat');
   const telat = telatRecords.length;
-  const izin = todayRecords.filter((r) => r.status === 'Izin' || r.status === 'Cuti').length;
+  const izin = approvedToday.filter((r) => r.status === 'Izin' || r.status === 'Cuti').length;
 
-  const checkedInIds = new Set(todayRecords.map((r) => r.employeeId));
+  const checkedInIds = new Set(
+    todayRecords.filter((r) => r.approval !== 'rejected').map((r) => r.employeeId),
+  );
   const belumAbsen = EMPLOYEES.filter((e) => !checkedInIds.has(e.id));
 
   const employeeName = (id: number) => EMPLOYEES.find((e) => e.id === id)?.name ?? '-';
   const employeeDivision = (id: number) => EMPLOYEES.find((e) => e.id === id)?.division ?? '-';
 
   // Rekap saya bulan ini (akun staf = Budi Santoso, id 1).
+  // Hanya yang sudah disetujui yang dihitung; yang pending ditampilkan
+  // terpisah di bawah rekap.
   const monthPrefix = today.slice(0, 7);
-  const myMonth = records.filter((r) => r.employeeId === 1 && r.date.startsWith(monthPrefix));
+  const myMonth = records.filter(
+    (r) => r.employeeId === 1 && r.date.startsWith(monthPrefix) && r.approval === 'approved',
+  );
+  const myPending = records.filter(
+    (r) => r.employeeId === 1 && r.date.startsWith(monthPrefix) && r.approval === 'pending',
+  ).length;
   const myHadir = myMonth.filter((r) => r.status === 'Hadir').length;
   const myTelat = myMonth.filter((r) => r.status === 'Telat').length;
   const myIzin = myMonth.filter((r) => r.status === 'Izin' || r.status === 'Cuti').length;
 
+  // Absen saya hari ini ditolak Bos? Tampilkan pemberitahuan supaya
+  // staf tahu harus absen ulang (tombol absen aktif lagi karena
+  // status tersimpannya sudah dihapus saat penolakan).
+  const myTodayRejected =
+    isStaff && todayRecords.some((r) => r.employeeId === 1 && r.approval === 'rejected');
+
   // Bukti kerja: berapa dari yang hadir hari ini yang sudah melampirkan.
-  const presentIds = todayRecords
+  const presentIds = approvedToday
     .filter((r) => r.status === 'Hadir' || r.status === 'Telat')
     .map((r) => r.employeeId);
   const withEvidence = presentIds.filter((id) => (evidenceByEmployee[id] ?? []).length > 0).length;
@@ -205,19 +230,12 @@ export default function Home() {
     </>
   );
 
+  // Baris status sengaja ditulis satu baris tanpa jeda antar ekspresi:
+  // jeda baris di JSX sempat membuat spasi muncul sebelum koma
+  // ("Telat , pulang pukul ..."). Satu baris = koma menempel ke badge.
   const myStatusLine = myCheckIn ? (
     <p className="mt-4 text-lg text-ink">
-      Anda absen masuk pukul <span className="font-bold tabular-nums">{myCheckIn}</span>
-      {myStatus ? (
-        <span className="ml-2">
-          <AttendanceBadge status={myStatus} />
-        </span>
-      ) : null}
-      {myCheckOut ? (
-        <span>
-          , pulang pukul <span className="font-bold tabular-nums">{myCheckOut}</span>
-        </span>
-      ) : null}
+      Anda absen masuk pukul <span className="font-bold tabular-nums">{myCheckIn}</span>{myStatus ? <span className="ml-2"><AttendanceBadge status={myStatus} /></span> : null}{myCheckOut ? <span>, pulang pukul <span className="font-bold tabular-nums">{myCheckOut}</span></span> : null}
     </p>
   ) : null;
 
@@ -240,6 +258,11 @@ export default function Home() {
             <h2 className="text-xl font-bold text-ink">Absen saya hari ini</h2>
             <p className="mt-3 text-5xl font-bold tracking-wide text-primary-deep tabular-nums">{clock}</p>
             <p className="mt-2 text-base text-ink-muted">Waktu Indonesia Barat (WIB)</p>
+            {myTodayRejected ? (
+              <p className="mt-4 rounded-button bg-error/10 px-4 py-3 text-base font-bold text-error">
+                Absen Anda hari ini ditolak Bos. Silakan absen ulang.
+              </p>
+            ) : null}
             {myStatusLine}
             {!myCheckIn ? (
               <p className="mt-4 text-lg font-bold text-warning-ink">
@@ -319,29 +342,39 @@ export default function Home() {
                 <div className="mt-0.5 text-sm font-semibold text-ink-muted">Izin / Cuti</div>
               </div>
             </div>
+            {myPending > 0 ? (
+              <p className="mt-3 text-base text-ink-muted">
+                Menunggu persetujuan Bos:{' '}
+                <span className="font-bold text-warning-ink tabular-nums">{myPending}</span> catatan.
+              </p>
+            ) : null}
           </div>
 
           {/* Ringkasan stok. */}
           <div className="entrance grid grid-cols-3 gap-3" style={{ animationDelay: '250ms' }}>
             <div className="rounded-card border border-hairline bg-surface p-4 text-center shadow-card">
-              <div className="text-3xl font-bold text-ink tabular-nums">{loading ? '-' : products.length}</div>
+              <div className="text-3xl font-bold text-ink tabular-nums">{loading || stockUnavailable ? '-' : products.length}</div>
               <div className="mt-1 text-sm font-semibold text-ink-muted">Produk</div>
             </div>
             <div className="rounded-card border border-hairline bg-surface p-4 text-center shadow-card">
-              <div className="text-3xl font-bold text-warning tabular-nums">{loading ? '-' : menipisList.length}</div>
+              <div className="text-3xl font-bold text-warning tabular-nums">{loading || stockUnavailable ? '-' : menipisList.length}</div>
               <div className="mt-1 text-sm font-semibold text-ink-muted">Menipis</div>
             </div>
             <div className="rounded-card border border-hairline bg-surface p-4 text-center shadow-card">
-              <div className="text-3xl font-bold text-error tabular-nums">{loading ? '-' : habisCount}</div>
+              <div className="text-3xl font-bold text-error tabular-nums">{loading || stockUnavailable ? '-' : habisCount}</div>
               <div className="mt-1 text-sm font-semibold text-ink-muted">Habis</div>
             </div>
           </div>
 
-          <p className="text-center text-base text-ink-muted">
-            Total {loading ? '...' : totalUnits.toLocaleString('id-ID')} barang di gudang.
-            Semua barang keluar lewat gerbang gudang, jadi satu scan di sini
-            mencatat semua penjualan, online maupun offline.
-          </p>
+          {stockUnavailable ? (
+            <p className="text-center text-base font-bold text-error">{stockError}</p>
+          ) : (
+            <p className="text-center text-base text-ink-muted">
+              Total {loading ? '...' : totalUnits.toLocaleString('id-ID')} barang di gudang.
+              Semua barang keluar lewat gerbang gudang, jadi satu scan di sini
+              mencatat semua penjualan, online maupun offline.
+            </p>
+          )}
         </div>
       ) : (
         <div className="space-y-6">
@@ -355,6 +388,18 @@ export default function Home() {
               Bukti kerja: <span className="font-bold text-primary-deep tabular-nums">{withEvidence} dari {presentIds.length}</span> yang
               hadir sudah melampirkan bukti.
             </p>
+            {pendingAll.length > 0 ? (
+              <Link
+                to="/absensi"
+                className="mt-3 block rounded-button bg-warning/10 px-4 py-3 text-base text-ink hover:bg-warning/20"
+              >
+                Menunggu persetujuan:{' '}
+                <span className="font-bold text-warning-ink tabular-nums">
+                  {pendingAll.length}
+                </span>{' '}
+                absen belum disetujui Bos. Ketuk untuk memeriksa.
+              </Link>
+            ) : null}
             <div className="mt-6 grid gap-8 sm:grid-cols-2">
               <div>
                 <p className="text-sm font-bold uppercase tracking-wide text-ink-muted">
@@ -431,21 +476,11 @@ export default function Home() {
               <p className="mt-1 text-base text-ink-muted">
                 <span className="font-bold text-primary-deep tabular-nums">{clock}</span> WIB
               </p>
+              {/* Baris status satu baris tanpa jeda antar ekspresi, sama
+                  seperti kartu staf: koma harus menempel ke badge. */}
               {myCheckIn ? (
                 <p className="mt-1 text-base text-ink">
-                  Masuk pukul{' '}
-                  <span className="font-bold text-ink tabular-nums">{myCheckIn}</span>
-                  {myStatus ? (
-                    <span className="ml-2">
-                      <AttendanceBadge status={myStatus} />
-                    </span>
-                  ) : null}
-                  {myCheckOut ? (
-                    <span>
-                      {', pulang pukul '}
-                      <span className="font-bold text-ink tabular-nums">{myCheckOut}</span>
-                    </span>
-                  ) : null}
+                  Masuk pukul{' '}<span className="font-bold text-ink tabular-nums">{myCheckIn}</span>{myStatus ? <span className="ml-2"><AttendanceBadge status={myStatus} /></span> : null}{myCheckOut ? <span>, pulang pukul <span className="font-bold text-ink tabular-nums">{myCheckOut}</span></span> : null}
                 </p>
               ) : (
                 <p className="mt-1 text-base font-bold text-warning-ink">
@@ -466,6 +501,15 @@ export default function Home() {
             </div>
             {loading ? (
               <p className="mt-3 text-base text-ink-muted">Memuat stok...</p>
+            ) : stockUnavailable ? (
+              <div className="mt-3">
+                <p className="text-base font-bold text-error">{stockError}</p>
+                <div className="mt-3">
+                  <BigButton tone="secondary" onClick={() => void refreshStock()}>
+                    Coba lagi
+                  </BigButton>
+                </div>
+              </div>
             ) : menipisList.length === 0 ? (
               <p className="mt-3 text-base text-ink-muted">Tidak ada stok yang menipis.</p>
             ) : (
@@ -481,19 +525,23 @@ export default function Home() {
               </ul>
             )}
             <p className="mt-3 text-base text-ink-muted">
-              Total {loading ? '...' : totalUnits.toLocaleString('id-ID')} barang di gudang, {loading ? '...' : products.length} jenis produk.
+              {stockUnavailable
+                ? 'Total stok belum bisa ditampilkan.'
+                : `Total ${loading ? '...' : totalUnits.toLocaleString('id-ID')} barang di gudang, ${loading ? '...' : products.length} jenis produk.`}
             </p>
           </div>
 
           {/* Jalan pintas ke Karyawan dan Laporan (untuk manager di HP,
-              yang tidak melihat sidebar). */}
-          <div className="entrance grid grid-cols-2 gap-3 md:hidden" style={{ animationDelay: '250ms' }}>
-            <Link
-              to="/karyawan"
-              className="btn-press flex min-h-[72px] items-center justify-center rounded-card border border-hairline bg-surface text-lg font-bold text-ink shadow-card"
-            >
-              Karyawan
-            </Link>
+              yang tidak melihat sidebar). Karyawan hanya untuk Admin. */}
+          <div className={`entrance grid gap-3 md:hidden ${isAdmin ? 'grid-cols-2' : 'grid-cols-1'}`} style={{ animationDelay: '250ms' }}>
+            {isAdmin ? (
+              <Link
+                to="/karyawan"
+                className="btn-press flex min-h-[72px] items-center justify-center rounded-card border border-hairline bg-surface text-lg font-bold text-ink shadow-card"
+              >
+                Karyawan
+              </Link>
+            ) : null}
             <Link
               to="/laporan"
               className="btn-press flex min-h-[72px] items-center justify-center rounded-card border border-hairline bg-surface text-lg font-bold text-ink shadow-card"

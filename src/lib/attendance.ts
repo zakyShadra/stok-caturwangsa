@@ -1,14 +1,27 @@
 // Data dan logika absensi. Aturan yang dipakai:
 // - Masuk setelah pukul 08:15 dihitung Telat.
-// - Role: Admin (Zaky), Bos (Pak Yunus), Manager (Ibu Abe), Staff.
-//   Bos dan Manager bisa melihat daftar hadir + bukti kerja.
-//   Bos TIDAK absen, dia hanya memantau.
-//   Staff hanya melihat absensi dan stoknya sendiri.
+// - Matriks peran (keputusan Zaky, 18 Nov 2026, menggantikan aturan lama):
+//   Admin (Zaky): satu-satunya yang menambah/mengubah/menghapus karyawan.
+//     Baca semua, absen sendiri, scan stok. TIDAK menyetujui absensi.
+//   Bos (Pak Yunus): menyetujui/menolak absensi + pengajuan Izin/Cuti.
+//     Melihat foto selfie absen + bukti kerja + laporan. TIDAK absen
+//     sendiri, TIDAK mengelola karyawan.
+//   Manager (Ibu Abe): hanya cek laporan tiap karyawan (read-only) +
+//     melihat absensi/foto/bukti kerja. Absen sendiri, scan stok.
+//     TIDAK mengelola karyawan, TIDAK menyetujui apa pun.
+//   Staff: absen masuk/pulang + selfie + upload bukti kerja + lihat
+//     riwayat sendiri + mengajukan Izin/Cuti. Scan stok. TIDAK bisa
+//     ke halaman Karyawan/Laporan.
+// - Persetujuan absensi: tiap catatan absen punya status persetujuan.
+//   Check-in baru berstatus pending; Bos menyetujui/menolak. Rekap
+//   dan laporan hanya menghitung yang approved; yang rejected tidak
+//   masuk hitungan; yang pending ditampilkan terpisah.
 // - Staf melampirkan bukti kerjaan hari ini saat absen (foto/dokumen).
 // Data karyawan dan akun di bawah ini adalah data awal yang dipakai
 // sampai backend jadi. Nanti data ini tinggal di database.
 export type Role = 'Admin' | 'Bos' | 'Manager' | 'Staff';
 export type AttendanceStatus = 'Hadir' | 'Telat' | 'Izin' | 'Cuti';
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
 
 export interface User {
   email: string;
@@ -32,6 +45,7 @@ export interface AttendanceRecord {
   checkIn: string | null; // HH:MM
   checkOut: string | null; // HH:MM
   status: AttendanceStatus;
+  approval: ApprovalStatus; // pending = menunggu Bos, approved = dihitung, rejected = tidak dihitung
 }
 
 // Bukti kerja yang dilampirkan staf saat absen. File disimpan di
@@ -94,13 +108,15 @@ export function haversineDistanceMeters(
 
 // Bukti verifikasi satu kali absen: lokasi GPS + foto selfie.
 // Disimpan bersama catatan absen, dilihat Bos/Manager di halaman
-// Absensi. Saat ini di memori saja (belum ada backend); nanti
-// selfie di-upload ke Workers + R2, koordinat dicatat di log.
+// Absensi. Selfie disimpan sebagai data URL JPEG yang diperkecil
+// (maks 640px), jadi fotonya tetap tampil setelah halaman
+// di-refresh. Nanti selfie di-upload ke Workers + R2, koordinat
+// dicatat di log.
 export interface CheckVerification {
   lat: number;
   lon: number;
   distanceMeters: number; // jarak dari kantor saat absen
-  selfieUrl: string | null; // object URL foto selfie (atau data URL)
+  selfieUrl: string | null; // data URL foto selfie (bukan object URL)
   selfieName: string;
   time: string; // HH:MM
 }
@@ -135,11 +151,13 @@ export function jakartaTime(): string {
 }
 
 // Absensi hari ini saja. Maya sudah absen (telat, masuk 08:26),
+// dan absensinya sudah disetujui supaya rekap tidak kosong.
 // Budi belum absen, jadi dia muncul di "Belum absen" sampai dia
 // absen masuk sendiri. Entri baru ditambahkan saat karyawan absen
-// lewat aplikasi, atau saat Admin/Manager menandai Izin/Cuti.
+// lewat aplikasi (status pending, menunggu persetujuan Bos), atau
+// saat staf mengajukan Izin/Cuti.
 export function getAttendance(): AttendanceRecord[] {
   return [
-    { employeeId: 2, date: jakartaDate(0), checkIn: '08:26', checkOut: null, status: 'Telat' },
+    { employeeId: 2, date: jakartaDate(0), checkIn: '08:26', checkOut: null, status: 'Telat', approval: 'approved' },
   ];
 }

@@ -1,5 +1,6 @@
-// Halaman Karyawan (Admin/Manager saja). Daftar karyawan dalam bentuk
+// Halaman Karyawan (Admin saja). Daftar karyawan dalam bentuk
 // kartu, tambah/ubah lewat form, hapus lewat tombol di kartu.
+// Admin satu-satunya yang mengelola karyawan (matriks peran).
 import { useState } from 'react';
 import { EMPLOYEES } from '../lib/attendance';
 import type { Employee } from '../lib/attendance';

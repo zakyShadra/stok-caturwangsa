@@ -1,6 +1,8 @@
-// Halaman Laporan (Admin/Manager saja). Rekap kehadiran per periode,
+// Halaman Laporan (Admin/Bos/Manager). Rekap kehadiran per periode,
 // diurutkan dari yang paling sering telat, supaya yang perlu ditegur
 // muncul duluan. Bisa diunduh sebagai CSV untuk dibuka di Excel.
+// Hanya catatan yang sudah disetujui Bos yang dihitung; yang pending
+// ditampilkan terpisah, yang ditolak tidak dihitung.
 import { useMemo, useState } from 'react';
 import { EMPLOYEES, formatDateID, jakartaDate } from '../lib/attendance';
 import { useAttendanceState } from '../lib/attendance-state';
@@ -20,12 +22,14 @@ export default function Reports() {
     () =>
       EMPLOYEES.map((e) => {
         const mine = filtered.filter((r) => r.employeeId === e.id);
+        const approved = mine.filter((r) => r.approval === 'approved');
         return {
           employee: e,
-          hadir: mine.filter((r) => r.status === 'Hadir').length,
-          telat: mine.filter((r) => r.status === 'Telat').length,
-          izin: mine.filter((r) => r.status === 'Izin' || r.status === 'Cuti').length,
-          total: mine.length,
+          hadir: approved.filter((r) => r.status === 'Hadir').length,
+          telat: approved.filter((r) => r.status === 'Telat').length,
+          izin: approved.filter((r) => r.status === 'Izin' || r.status === 'Cuti').length,
+          pending: mine.filter((r) => r.approval === 'pending').length,
+          total: approved.length,
         };
       }).sort((a, b) => b.telat - a.telat || b.izin - a.izin),
     [filtered],
@@ -36,17 +40,18 @@ export default function Reports() {
       hadir: acc.hadir + r.hadir,
       telat: acc.telat + r.telat,
       izin: acc.izin + r.izin,
+      pending: acc.pending + r.pending,
       total: acc.total + r.total,
     }),
-    { hadir: 0, telat: 0, izin: 0, total: 0 },
+    { hadir: 0, telat: 0, izin: 0, pending: 0, total: 0 },
   );
 
   const downloadCSV = () => {
-    const header = 'Nama,Divisi,Hadir,Telat,Izin/Cuti,Total Hari';
+    const header = 'Nama,Divisi,Hadir,Telat,Izin/Cuti,Menunggu Persetujuan,Total Hari';
     const lines = rows.map(
-      (r) => `${r.employee.name},${r.employee.division},${r.hadir},${r.telat},${r.izin},${r.total}`,
+      (r) => `${r.employee.name},${r.employee.division},${r.hadir},${r.telat},${r.izin},${r.pending},${r.total}`,
     );
-    const csv = [header, ...lines, `TOTAL,,${totals.hadir},${totals.telat},${totals.izin},${totals.total}`].join('\n');
+    const csv = [header, ...lines, `TOTAL,,${totals.hadir},${totals.telat},${totals.izin},${totals.pending},${totals.total}`].join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -106,9 +111,16 @@ export default function Reports() {
         </p>
         <p className="mt-1 text-base text-ink-muted">
           {telatPeople > 0
-            ? `${telatPeople} karyawan telat dalam periode ini, total ${totals.telat} kali telat dari ${totals.total} catatan absen. Diurutkan dari yang paling sering telat.`
-            : `Tidak ada yang telat dalam periode ini (${totals.total} catatan absen).`}
+            ? `${telatPeople} karyawan telat dalam periode ini, total ${totals.telat} kali telat dari ${totals.total} catatan absen yang sudah disetujui. Diurutkan dari yang paling sering telat.`
+            : `Tidak ada yang telat dalam periode ini (${totals.total} catatan absen yang sudah disetujui).`}
         </p>
+        {totals.pending > 0 ? (
+          <p className="mt-2 text-base text-ink-muted">
+            Menunggu persetujuan Bos:{' '}
+            <span className="font-bold text-warning-ink tabular-nums">{totals.pending}</span> catatan
+            belum masuk hitungan.
+          </p>
+        ) : null}
       </div>
 
       {/* Kartu per karyawan, diurutkan dari yang paling sering telat. */}
@@ -141,6 +153,12 @@ export default function Reports() {
                 <div className="text-2xl font-bold text-ink tabular-nums">{r.total}</div>
               </div>
             </div>
+            {r.pending > 0 ? (
+              <p className="mt-3 text-base text-ink-muted">
+                Menunggu persetujuan:{' '}
+                <span className="font-bold text-warning-ink tabular-nums">{r.pending}</span> catatan.
+              </p>
+            ) : null}
           </article>
         ))}
       </div>
@@ -166,6 +184,12 @@ export default function Reports() {
             <div className="text-2xl font-bold text-ink tabular-nums">{totals.total}</div>
           </div>
         </div>
+        {totals.pending > 0 ? (
+          <p className="mt-3 text-base text-ink-muted">
+            Menunggu persetujuan:{' '}
+            <span className="font-bold text-warning-ink tabular-nums">{totals.pending}</span> catatan.
+          </p>
+        ) : null}
       </div>
     </div>
   );

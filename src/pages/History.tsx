@@ -2,7 +2,7 @@
 // Tanggal, Keterangan, Masuk, Keluar, Sisa.
 // Tampilan kedua "Per Hari": stok akhir tiap produk per tanggal.
 import { useMemo, useState } from 'react';
-import { EmptyState, PageHeader, SegmentedControl } from '../components/ui';
+import { BigButton, EmptyState, PageHeader, SegmentedControl } from '../components/ui';
 import MonthlyTable from '../components/MonthlyTable';
 import { useStock } from '../lib/store';
 import { locationLabel } from '../lib/types';
@@ -37,7 +37,7 @@ function formatTime(iso: string): string {
 }
 
 export default function History() {
-  const { products, log, loading } = useStock();
+  const { products, log, loading, logError, refresh } = useStock();
   const [view, setView] = useState<View>('transaksi');
   const [filter, setFilter] = useState<Filter>('semua');
 
@@ -78,6 +78,19 @@ export default function History() {
 
           {loading ? (
             <p className="py-10 text-center text-lg text-ink-muted">Memuat riwayat...</p>
+          ) : logError && log.length === 0 ? (
+            <div className="rounded-card border border-hairline bg-surface p-6 text-center shadow-card">
+              <p className="text-lg font-bold text-error">{logError}</p>
+              <p className="mt-2 text-base text-ink-muted">
+                Riwayat tidak ditampilkan sebagai kosong, karena datanya
+                belum berhasil dimuat.
+              </p>
+              <div className="mt-4">
+                <BigButton tone="primary" onClick={() => void refresh()}>
+                  Coba lagi
+                </BigButton>
+              </div>
+            </div>
           ) : filtered.length === 0 ? (
             <EmptyState
               title="Belum ada riwayat"

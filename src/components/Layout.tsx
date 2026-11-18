@@ -96,8 +96,9 @@ function IconLogout() {
 }
 
 // Nav dibagi 3 grup: UTAMA, ABSENSI, STOK. Grup dipisah label
-// small-caps + padding, bukan garis divider. Staff tidak melihat
-// Karyawan dan Laporan (hanya Admin/Bos/Manager).
+// small-caps + padding, bukan garis divider. Karyawan hanya muncul
+// untuk Admin (satu-satunya yang mengelola karyawan); Laporan untuk
+// Admin/Bos/Manager; Staff tidak melihat keduanya.
 const NAV_GROUPS = [
   {
     label: 'Utama',
@@ -109,7 +110,7 @@ const NAV_GROUPS = [
     label: 'Absensi',
     items: [
       { to: '/absensi', label: 'Absensi', Icon: IconClipboard, roles: ['Admin', 'Bos', 'Manager', 'Staff'] },
-      { to: '/karyawan', label: 'Karyawan', Icon: IconUsers, roles: ['Admin', 'Bos', 'Manager'] },
+      { to: '/karyawan', label: 'Karyawan', Icon: IconUsers, roles: ['Admin'] },
       { to: '/laporan', label: 'Laporan', Icon: IconChart, roles: ['Admin', 'Bos', 'Manager'] },
     ],
   },
@@ -134,6 +135,9 @@ export default function Layout() {
   const [pill, setPill] = useState({ top: 0, height: 0, visible: false });
 
   const activePath = location.pathname;
+
+  // Halaman scan tidak pakai footer: layarnya penuh untuk kamera
+  // (sama seperti BottomNav yang menyembunyikan diri di sana).
 
   // Pill diukur relatif ke nav. Karena nav bisa bergeser sendiri
   // (overflow-y-auto), pengukuran harus menambahkan nav.scrollTop:
@@ -255,6 +259,16 @@ export default function Layout() {
           <div key={location.pathname} className="page-enter">
             <Outlet />
           </div>
+          {/* Footer: garis hairline + copyright, di bawah konten tiap
+              halaman. Di HP, padding bawah konten (pb-32) menjaga
+              footer tetap di atas BottomNav. Tahun dinamis. */}
+          {!location.pathname.startsWith('/scan') ? (
+            <footer className="mt-8 border-t border-hairline pt-4 text-center">
+              <p className="text-sm text-ink-muted">
+                © {new Date().getFullYear()} PT Catur Wangsa Indah. All rights reserved.
+              </p>
+            </footer>
+          ) : null}
         </div>
       </main>
 

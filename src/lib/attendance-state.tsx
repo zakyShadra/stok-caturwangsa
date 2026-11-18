@@ -1,21 +1,28 @@
 // State absensi yang dipakai bersama Beranda, halaman Absensi, dan
 // Laporan: catatan absen, jam absen masuk/pulang saya, bukti kerja,
-// dan bukti verifikasi (lokasi GPS + selfie) tiap karyawan. Semua
-// masih di memori (belum ada backend): absen yang dicatat lewat
-// aplikasi hilang kalau halaman di-refresh, kecuali status absen
-// saya hari ini yang disimpan di localStorage. Nanti data ini
-// tinggal di Workers + D1, file di-upload ke R2.
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+// dan bukti verifikasi (lokasi GPS + selfie) tiap karyawan.
+// Penyimpanan sementara (belum ada backend):
+// - Status absen saya hari ini: localStorage PER AKUN (kunci memakai
+//   email), supaya ganti akun di perangkat yang sama tidak saling
+//   menukar status absen. Hanya berlaku untuk tanggal hari ini.
+// - Catatan absen (termasuk status persetujuan Bos) dan verifikasi
+//   selfie: localStorage, supaya tidak hilang kalau halaman
+//   di-refresh. Catatan lama (sebelum bulan ini) dibuang saat dimuat.
+// - Bukti kerja masih di memori saja: filenya belum bisa disimpan.
+// Nanti data ini tinggal di Workers + D1, file di-upload ke R2.
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { useAuth } from './auth';
 import {
   LATE_CUTOFF,
   OFFICE_LOCATION,
+  USERS,
   getAttendance,
   haversineDistanceMeters,
   jakartaDate,
   jakartaTime,
 } from './attendance';
-import type { AttendanceRecord, CheckVerification, EvidenceFile } from './attendance';
+import type { ApprovalStatus, AttendanceRecord, CheckVerification, EvidenceFile } from './attendance';
 
 export interface EmployeeVerification {
   masuk?: CheckVerification;
@@ -25,6 +32,7 @@ export interface EmployeeVerification {
 interface AttendanceStateValue {
   records: AttendanceRecord[];
   upsertRecord: (rec: AttendanceRecord) => void;
+  setApproval: (employeeId: number, date: string, approval: ApprovalStatus) => void;
   myCheckIn: string | null;
   myCheckOut: string | null;
   myStatus: 'Hadir' | 'Telat' | null;
@@ -37,6 +45,12 @@ interface AttendanceStateValue {
 }
 
 const AttendanceStateContext = createContext<AttendanceStateValue | null>(null);
+
+// Akun staf (Budi Santoso) adalah satu-satunya akun yang terikat ke
+// karyawan di daftar absensi (id 1). Dipakai saat Bos menolak absen:
+// status absen tersimpan staf itu dihapus supaya dia bisa absen ulang.
+const STAFF_EMPLOYEE_ID = 1;
+const STAFF_EMAIL = USERS.find((u) => u.role === 'Staff')?.email ?? 'staff@sabunpalem.co.id';
 
 // Thumbnail untuk file gambar yang sudah ada: digambar di canvas
 // (latar teal + nama file), jadi Bos/Manager bisa melihat wujudnya
@@ -111,9 +125,15 @@ function formatSize(bytes: number): string {
 
 let evidenceCounter = 100;
 
-// Status absen hari ini disimpan di localStorage, supaya tidak hilang
-// kalau halaman di-refresh. Hanya berlaku untuk tanggal hari ini.
-const CHECKIN_KEY = 'sabunpalem-absen-hari-ini';
+// --- Status absen saya hari ini: satu kunci per akun. ---
+// Kunci lama (satu kunci untuk semua akun di perangkat) pernah bikin
+// status absen Budi muncul di kartu "Absen saya" akun lain. Kunci
+// lama dihapus sekali saat provider pertama dimuat.
+const LEGACY_CHECKIN_KEY = 'sabunpalem-absen-hari-ini';
+
+function checkInKeyFor(email: string | null | undefined): string | null {
+  return email ? `${LEGACY_CHECKIN_KEY}-${email}` : null;
+}
 
 interface SavedCheckIn {
   date: string;
@@ -122,10 +142,11 @@ interface SavedCheckIn {
   status: 'Hadir' | 'Telat' | null;
 }
 
-function loadCheckIn(): SavedCheckIn {
+function loadCheckIn(key: string | null): SavedCheckIn {
   const empty: SavedCheckIn = { date: '', checkIn: null, checkOut: null, status: null };
+  if (!key) return empty;
   try {
-    const raw = localStorage.getItem(CHECKIN_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return empty;
     const parsed = JSON.parse(raw) as SavedCheckIn;
     if (parsed.date !== jakartaDate(0)) return empty;
@@ -135,20 +156,98 @@ function loadCheckIn(): SavedCheckIn {
   }
 }
 
-function saveCheckIn(saved: SavedCheckIn) {
+function saveCheckIn(key: string | null, saved: SavedCheckIn) {
+  if (!key) return;
   try {
-    localStorage.setItem(CHECKIN_KEY, JSON.stringify(saved));
+    localStorage.setItem(key, JSON.stringify(saved));
   } catch {
     // localStorage penuh / tidak tersedia: abaikan, state memori tetap jalan.
   }
 }
 
+// --- Catatan absen: disimpan supaya persetujuan Bos dan absen yang
+// sudah dicatat tidak hilang kalau halaman di-refresh. ---
+const RECORDS_KEY = 'sabunpalem-absensi';
+
+function loadRecords(): AttendanceRecord[] {
+  const seed = getAttendance();
+  try {
+    const raw = localStorage.getItem(RECORDS_KEY);
+    if (!raw) return seed;
+    const parsed = JSON.parse(raw) as { records?: AttendanceRecord[] };
+    const monthStart = `${jakartaDate(0).slice(0, 7)}-01`;
+    const saved = (parsed.records ?? []).filter((r) => r.date >= monthStart);
+    const merged = [...saved];
+    for (const s of seed) {
+      if (!merged.some((r) => r.employeeId === s.employeeId && r.date === s.date)) {
+        merged.push(s);
+      }
+    }
+    return merged;
+  } catch {
+    return seed;
+  }
+}
+
+// --- Verifikasi absen (GPS + selfie): disimpan supaya fotonya tetap
+// tampil setelah halaman di-refresh. Hanya untuk tanggal hari ini. ---
+const VERIF_KEY = 'sabunpalem-verifikasi-hari-ini';
+
+function loadVerification(): Record<number, EmployeeVerification> {
+  const seed = seedVerification();
+  try {
+    const raw = localStorage.getItem(VERIF_KEY);
+    if (!raw) return seed;
+    const parsed = JSON.parse(raw) as { date?: string; byEmployee?: Record<number, EmployeeVerification> };
+    if (parsed.date !== jakartaDate(0)) return seed;
+    return { ...seed, ...(parsed.byEmployee ?? {}) };
+  } catch {
+    return seed;
+  }
+}
+
+function saveVerification(byEmployee: Record<number, EmployeeVerification>) {
+  try {
+    localStorage.setItem(VERIF_KEY, JSON.stringify({ date: jakartaDate(0), byEmployee }));
+  } catch {
+    // localStorage penuh: abaikan, foto di memori tetap tampil sesi ini.
+  }
+}
+
 export function AttendanceProvider({ children }: { children: ReactNode }) {
-  const [saved, setSaved] = useState<SavedCheckIn>(loadCheckIn);
-  const [records, setRecords] = useState<AttendanceRecord[]>(() => getAttendance());
+  const { user } = useAuth();
+  const userEmail = user?.email ?? null;
+
+  const [saved, setSaved] = useState<SavedCheckIn>(() => loadCheckIn(checkInKeyFor(userEmail)));
+  const [records, setRecords] = useState<AttendanceRecord[]>(loadRecords);
   const [evidenceByEmployee, setEvidenceByEmployee] = useState<Record<number, EvidenceFile[]>>(seedEvidence);
   const [verificationByEmployee, setVerificationByEmployee] =
-    useState<Record<number, EmployeeVerification>>(seedVerification);
+    useState<Record<number, EmployeeVerification>>(loadVerification);
+
+  // Hapus kunci lama (satu kunci untuk semua akun) sekali saja.
+  useEffect(() => {
+    try {
+      localStorage.removeItem(LEGACY_CHECKIN_KEY);
+    } catch {
+      // abaikan
+    }
+  }, []);
+
+  // Ganti akun = muat ulang status absen milik akun itu. Tanpa ini,
+  // status absen akun sebelumnya ikut terbawa ke akun baru.
+  useEffect(() => {
+    setSaved(loadCheckIn(checkInKeyFor(userEmail)));
+  }, [userEmail]);
+
+  // Simpan catatan absen setiap kali berubah (persetujuan Bos ikut
+  // tersimpan, jadi tidak kembali pending setelah refresh).
+  useEffect(() => {
+    try {
+      localStorage.setItem(RECORDS_KEY, JSON.stringify({ records }));
+    } catch {
+      // abaikan, state memori tetap jalan
+    }
+  }, [records]);
 
   const myCheckIn = saved.checkIn;
   const myCheckOut = saved.checkOut;
@@ -166,8 +265,36 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  // Persetujuan Bos: ubah status persetujuan satu catatan. Kalau absen
+  // HARI INI ditolak, status absen tersimpan staf itu dihapus supaya
+  // dia bisa absen ulang (absen ulang membuat catatan pending baru).
+  // Penolakan untuk tanggal lain (misal pengajuan Cuti besok) tidak
+  // menyentuh status absen hari ini.
+  const setApproval = useCallback(
+    (employeeId: number, date: string, approval: ApprovalStatus) => {
+      setRecords((prev) =>
+        prev.map((r) =>
+          r.employeeId === employeeId && r.date === date ? { ...r, approval } : r,
+        ),
+      );
+      if (approval === 'rejected' && employeeId === STAFF_EMPLOYEE_ID && date === jakartaDate(0)) {
+        try {
+          localStorage.removeItem(checkInKeyFor(STAFF_EMAIL) ?? '');
+        } catch {
+          // abaikan
+        }
+        if (userEmail === STAFF_EMAIL) {
+          setSaved({ date: '', checkIn: null, checkOut: null, status: null });
+        }
+      }
+    },
+    [userEmail],
+  );
+
   // Absen masuk: catat jam + status, simpan verifikasi (GPS + selfie),
   // dan tambahkan catatan ke daftar absensi (kalau employeeId ada).
+  // Catatan baru berstatus pending sampai Bos menyetujui. Absen ulang
+  // setelah ditolak membuat catatan pending baru.
   // Admin/Manager tidak ada di daftar karyawan, jadi employeeId-nya
   // null: jam absen mereka tetap tersimpan untuk akun mereka sendiri.
   const checkIn = useCallback(
@@ -177,25 +304,30 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       const status = time > LATE_CUTOFF ? 'Telat' : 'Hadir';
       const next: SavedCheckIn = { date: today, checkIn: time, checkOut: null, status };
       setSaved(next);
-      saveCheckIn(next);
+      saveCheckIn(checkInKeyFor(userEmail), next);
       if (employeeId !== null) {
-        upsertRecord({ employeeId, date: today, checkIn: time, checkOut: null, status });
-        setVerificationByEmployee((prev) => ({
-          ...prev,
-          [employeeId]: { ...(prev[employeeId] ?? {}), masuk: { ...v, time } },
-        }));
+        upsertRecord({ employeeId, date: today, checkIn: time, checkOut: null, status, approval: 'pending' });
+        setVerificationByEmployee((prev) => {
+          const nextV = {
+            ...prev,
+            [employeeId]: { ...(prev[employeeId] ?? {}), masuk: { ...v, time } },
+          };
+          saveVerification(nextV);
+          return nextV;
+        });
       }
     },
-    [upsertRecord],
+    [upsertRecord, userEmail],
   );
 
   const checkOut = useCallback(
     (v: CheckVerification, employeeId: number | null) => {
       const time = jakartaTime();
       const today = jakartaDate(0);
+      const key = checkInKeyFor(userEmail);
       setSaved((prev) => {
         const next: SavedCheckIn = { ...prev, checkOut: time };
-        saveCheckIn(next);
+        saveCheckIn(key, next);
         return next;
       });
       if (employeeId !== null) {
@@ -204,13 +336,17 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
             r.employeeId === employeeId && r.date === today ? { ...r, checkOut: time } : r,
           ),
         );
-        setVerificationByEmployee((prev) => ({
-          ...prev,
-          [employeeId]: { ...(prev[employeeId] ?? {}), pulang: { ...v, time } },
-        }));
+        setVerificationByEmployee((prev) => {
+          const nextV = {
+            ...prev,
+            [employeeId]: { ...(prev[employeeId] ?? {}), pulang: { ...v, time } },
+          };
+          saveVerification(nextV);
+          return nextV;
+        });
       }
     },
-    [],
+    [userEmail],
   );
 
   const addEvidence = useCallback((employeeId: number, files: File[]) => {
@@ -246,6 +382,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     () => ({
       records,
       upsertRecord,
+      setApproval,
       myCheckIn,
       myCheckOut,
       myStatus,
@@ -259,6 +396,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     [
       records,
       upsertRecord,
+      setApproval,
       myCheckIn,
       myCheckOut,
       myStatus,

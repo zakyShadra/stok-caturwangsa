@@ -65,7 +65,8 @@ await page.getByRole('button', { name: /DWL Palem Jerigen/ }).first().click();
 await page.waitForTimeout(800);
 
 // Cek default: lokasi Gudang Klinik, keterangan Jualan Magang, qty 1.
-const shown = await page.locator('text=Di Gudang Klinik').count();
+// Angka yang ditonjolkan adalah stok di lokasi terpilih (bukan total).
+const shown = await page.locator('text=Stok di Gudang Klinik:').count();
 console.log(`Lokasi default Gudang Klinik tampil: ${shown > 0 ? 'ya' : 'TIDAK'}`);
 if (shown === 0) errors.push('lokasi default bukan Gudang Klinik');
 await page.screenshot({ path: path.join(OUT, 'e2e-scan-found.png') });

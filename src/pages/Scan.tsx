@@ -9,6 +9,7 @@ import { BigButton, EmptyState, LocationPicker, QtyStepper, StatusBadge } from '
 // halaman scan dibuka, bukan di beranda.
 const BarcodeScanner = lazy(() => import('../components/BarcodeScanner'));
 import { findProductByBarcode } from '../lib/products';
+import { useAuth } from '../lib/auth';
 import { useStock } from '../lib/store';
 import { locationLabel, stockStatus, totalStock } from '../lib/types';
 import type { LocationId, MoveType, Product } from '../lib/types';
@@ -30,6 +31,7 @@ export default function Scan() {
   const { type } = useParams<{ type: string }>();
   const moveType: MoveType = type === 'keluar' ? 'keluar' : 'masuk';
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { products, recordScan, undoLast } = useStock();
 
   const [phase, setPhase] = useState<Phase>({ kind: 'scan' });
@@ -81,7 +83,9 @@ export default function Scan() {
         qty,
         location,
         note,
-        staff: 'Budi',
+        // Petugas = akun yang sedang masuk (dulu selalu tertulis Budi,
+        // meski yang scan akun lain, jadi riwayatnya salah nama).
+        staff: user?.name ?? 'Staf',
       });
       setPhase({ kind: 'success', product, qty, newTotal: totalStock(product), txId: tx.id });
     } catch {
@@ -104,6 +108,18 @@ export default function Scan() {
   const foundProduct = phase.kind === 'found' ? phase.product : null;
   const stockAtLocation = foundProduct ? foundProduct.stock[location] : 0;
   const notEnough = moveType === 'keluar' && foundProduct !== null && qty > stockAtLocation;
+  const outOfStock = moveType === 'keluar' && foundProduct !== null && stockAtLocation === 0;
+
+  // Pindah lokasi: angka stok yang tampil ikut berubah, dan jumlah
+  // yang dipilih ikut turun (clamp) kalau melebihi stok lokasi baru,
+  // supaya tidak langsung kena pesan error validasi.
+  const handleLocationChange = (loc: LocationId) => {
+    setLocation(loc);
+    if (moveType === 'keluar' && foundProduct) {
+      const atLoc = foundProduct.stock[loc];
+      setQty((q) => Math.min(q, Math.max(1, atLoc)));
+    }
+  };
 
   return (
     <div>
@@ -220,22 +236,38 @@ export default function Scan() {
               </div>
               <StatusBadge status={stockStatus(foundProduct)} />
             </div>
+            {/* Angka yang ditonjolkan adalah stok DI LOKASI YANG
+                DIPILIH, karena itulah yang membatasi transaksi. Total
+                semua gudang hanya info kecil sekunder. Dulu total yang
+                ditonjolkan, jadi user memilih 4 lalu ditolak karena
+                stok di Gudang Klinik cuma 3, dan merasa aplikasinya
+                tidak sinkron. */}
             <div className="mt-4 flex items-end gap-2 border-t border-hairline pt-4">
-              <span className="text-base font-semibold text-ink-muted">Stok saat ini:</span>
+              <span className="text-base font-semibold text-ink-muted">Stok di {locationLabel(location)}:</span>
               <span className="text-[32px] font-bold leading-none tabular-nums text-ink">
-                {totalStock(foundProduct)}
+                {stockAtLocation}
               </span>
               <span className="pb-0.5 text-lg font-semibold text-ink-muted">{foundProduct.unit}</span>
             </div>
             <p className="mt-2 text-base text-ink-muted">
-              Di {locationLabel(location)}: {stockAtLocation} {foundProduct.unit}
+              Total semua gudang: {totalStock(foundProduct)} {foundProduct.unit}
             </p>
+            {outOfStock ? (
+              <p className="mt-3 rounded-button bg-error/10 p-3 text-center text-base font-bold text-error">
+                Stok habis di lokasi ini. Pilih lokasi lain.
+              </p>
+            ) : null}
           </div>
 
           <div className="rounded-card border border-hairline bg-surface p-5 shadow-card">
             <p className="mb-3 text-center text-lg font-bold text-ink">Berapa jumlahnya?</p>
-            <QtyStepper value={qty} onChange={setQty} unit={foundProduct.unit} />
-            {notEnough ? (
+            <QtyStepper
+              value={qty}
+              onChange={setQty}
+              unit={foundProduct.unit}
+              max={moveType === 'keluar' ? stockAtLocation : undefined}
+            />
+            {notEnough && !outOfStock ? (
               <p className="mt-4 rounded-button bg-error/10 p-3 text-center text-base font-bold text-error">
                 Stok di {locationLabel(location)} hanya {stockAtLocation} {foundProduct.unit}.
                 Kurangi jumlahnya atau pilih lokasi lain.
@@ -245,7 +277,7 @@ export default function Scan() {
 
           <div className="rounded-card border border-hairline bg-surface p-5 shadow-card">
             <p className="mb-3 text-lg font-bold text-ink">Lokasi gudang</p>
-            <LocationPicker value={location} onChange={setLocation} />
+            <LocationPicker value={location} onChange={handleLocationChange} />
           </div>
 
           <div className="rounded-card border border-hairline bg-surface p-5 shadow-card">
