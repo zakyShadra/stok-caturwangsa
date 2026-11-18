@@ -22,6 +22,7 @@
   "private": true,
   "scripts": {
     "build": "tsc -b && vite build",
+    "build:pages": "tsc -b && vite build --base=/",
     "dev": "vite",
     "lint": "oxlint",
     "preview": "vite preview"
