@@ -28,6 +28,7 @@ import type {
   CheckVerification,
   EmployeeVerification,
   EvidenceFile,
+  EvidenceReview,
 } from './attendance';
 
 interface AttendanceStateValue {
@@ -41,6 +42,10 @@ interface AttendanceStateValue {
   checkOut: (v: CheckVerification, employeeId: number | null) => Promise<boolean>;
   evidenceByEmployee: Record<number, EvidenceFile[]>;
   verificationByRecord: Record<string, EmployeeVerification>;
+  // Marker cek bukti kerja oleh Manager (kunci `${employeeId}:${date}`).
+  reviewsByRecord: Record<string, EvidenceReview>;
+  // Manager menandai bukti kerja sudah dicek (marker, bukan approval).
+  reviewEvidence: (employeeId: number, date: string) => Promise<boolean>;
   addEvidence: (employeeId: number, files: File[]) => Promise<boolean>;
   removeEvidence: (employeeId: number, fileId: string) => Promise<boolean>;
   loading: boolean;
@@ -101,6 +106,7 @@ function monthRange(monthKey: string): { from: string; to: string } {
 export function AttendanceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const userEmail = user?.email ?? null;
+  const userName = user?.name ?? 'Manager';
   // Karyawan yang terikat ke akun yang login (null = Bos, tidak absen).
   const myEmployeeId = user?.employeeId ?? null;
 
@@ -108,6 +114,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [evidenceByEmployee, setEvidenceByEmployee] = useState<Record<number, EvidenceFile[]>>({});
   const [verificationByRecord, setVerificationByRecord] = useState<Record<string, EmployeeVerification>>({});
+  const [reviewsByRecord, setReviewsByRecord] = useState<Record<string, EvidenceReview>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const loadedMonths = useRef<Set<string>>(new Set());
@@ -157,6 +164,15 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
         next[Number(id)] = [...(next[Number(id)] ?? []), ...list];
       }
       return next;
+    });
+    setReviewsByRecord((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        if (key.split(':')[1]?.startsWith(monthKey)) {
+          delete next[key];
+        }
+      }
+      return { ...next, ...bundle.reviewsByRecord };
     });
     loadedMonths.current.add(monthKey);
   }, []);
@@ -310,6 +326,23 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     [refreshMonth],
   );
 
+  // Manager menandai bukti kerja sudah dicek (marker, bukan approval).
+  // Nama penanda diambil dari akun yang login.
+  const reviewEvidence = useCallback(
+    async (employeeId: number, date: string): Promise<boolean> => {
+      try {
+        await attendanceApi.reviewEvidence(employeeId, date, userName);
+        await refreshMonth(date.slice(0, 7));
+        setError(null);
+        return true;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Gagal menandai bukti sudah dicek');
+        return false;
+      }
+    },
+    [refreshMonth, userName],
+  );
+
   const removeEvidence = useCallback(
     async (employeeId: number, fileId: string): Promise<boolean> => {
       void employeeId;
@@ -339,6 +372,8 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       checkOut,
       evidenceByEmployee,
       verificationByRecord,
+      reviewsByRecord,
+      reviewEvidence,
       addEvidence,
       removeEvidence,
       loading,
@@ -358,6 +393,8 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       checkOut,
       evidenceByEmployee,
       verificationByRecord,
+      reviewsByRecord,
+      reviewEvidence,
       addEvidence,
       removeEvidence,
       loading,

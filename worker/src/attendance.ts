@@ -9,6 +9,7 @@
 // Endpoint (dipasang di bawah /api/absen):
 //   GET    /api/absen?from=YYYY-MM-DD&to=YYYY-MM-DD
 //          -> catatan absen + verifikasi (selfie) + bukti kerja
+//             + reviews (marker cek bukti kerja oleh Manager)
 //   POST   /api/absen/check-in   {employeeId, date, time, lat, lon,
 //          distanceMeters, selfieName, selfieData}
 //   POST   /api/absen/check-out  (bentuk sama seperti check-in)
@@ -17,6 +18,8 @@
 //   POST   /api/absen/evidence   {employeeId, date, name, kind,
 //          sizeLabel, data, mime}
 //   DELETE /api/absen/evidence/:id
+//   POST   /api/absen/evidence-review -> Manager menandai bukti
+//          kerja sudah dicek {employeeId, date, reviewedBy}
 //   GET    /api/absen/foto/:key  -> isi foto (Content-Type sesuai mime)
 //   GET    /api/absen/recap?month=YYYY-MM -> hitungan per karyawan
 //
@@ -47,6 +50,24 @@ function jsonError(c: { json: (body: object, status: number) => Response }, stat
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+// Waktu sekarang dalam zona Asia/Jakarta, format "YYYY-MM-DD HH:MM".
+// Dipakai untuk reviewed_at supaya jam yang tampil di aplikasi
+// adalah jam WIB, bukan UTC.
+function nowJakarta(): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`;
 }
 
 function randomSuffix(): string {
@@ -93,6 +114,13 @@ interface EvidenceRow {
   kind: string;
   size_label: string;
   photo_key: string;
+}
+
+interface EvidenceReviewRow {
+  employee_id: number;
+  date: string;
+  reviewed_by: string;
+  reviewed_at: string;
 }
 
 function photoUrl(c: { req: { url: string } }, key: string): string {
@@ -179,6 +207,11 @@ attendanceRoutes.get('/', async (c) => {
       .bind(start, end)
       .all<EvidenceRow>();
     evidence = e.results ?? [];
+    const rv = await db
+      .prepare('SELECT * FROM evidence_reviews WHERE date >= ? AND date <= ?')
+      .bind(start, end)
+      .all<EvidenceReviewRow>();
+    const reviews = rv.results ?? [];
     return c.json({
       records: (rows.results ?? []).map((r) =>
         toRecordJson(
@@ -188,6 +221,12 @@ attendanceRoutes.get('/', async (c) => {
           evidence.filter((x) => x.employee_id === r.employee_id && x.date === r.date),
         ),
       ),
+      reviews: reviews.map((r) => ({
+        employeeId: r.employee_id,
+        date: r.date,
+        reviewedBy: r.reviewed_by,
+        reviewedAt: r.reviewed_at,
+      })),
     });
   } catch (e) {
     console.error('GET /api/absen gagal:', e instanceof Error ? e.message : e);
@@ -533,6 +572,43 @@ attendanceRoutes.delete('/evidence/:id', async (c) => {
   } catch (e) {
     console.error('DELETE /api/absen/evidence gagal:', e instanceof Error ? e.message : e);
     return jsonError(c, 502, 'Gagal menghapus bukti kerja');
+  }
+});
+
+// POST /api/absen/evidence-review: Manager menandai bukti kerja
+// satu karyawan di satu tanggal sudah dicek. Marker, BUKAN
+// approval: tidak mengubah status absen. INSERT OR REPLACE supaya
+// menandai ulang tanggal yang sama tidak error (menimpa marker lama).
+attendanceRoutes.post('/evidence-review', async (c) => {
+  let body: { employeeId?: unknown; date?: unknown; reviewedBy?: unknown };
+  try {
+    body = (await c.req.json()) as typeof body;
+  } catch {
+    return jsonError(c, 400, 'Isi request bukan JSON yang benar');
+  }
+  if (
+    typeof body.employeeId !== 'number' ||
+    !Number.isInteger(body.employeeId) ||
+    typeof body.date !== 'string' ||
+    !DATE_PATTERN.test(body.date) ||
+    typeof body.reviewedBy !== 'string' ||
+    body.reviewedBy.trim() === '' ||
+    body.reviewedBy.length > 200
+  ) {
+    return jsonError(c, 400, 'employeeId, date, atau reviewedBy tidak benar');
+  }
+  const db = c.env.sabun_palem_absen;
+  try {
+    await db
+      .prepare(
+        'INSERT OR REPLACE INTO evidence_reviews (employee_id, date, reviewed_by, reviewed_at) VALUES (?, ?, ?, ?)',
+      )
+      .bind(body.employeeId, body.date, body.reviewedBy.trim(), nowJakarta())
+      .run();
+    return c.json({ ok: true });
+  } catch (e) {
+    console.error('POST /api/absen/evidence-review gagal:', e instanceof Error ? e.message : e);
+    return jsonError(c, 502, 'Gagal menyimpan penanda cek');
   }
 });
 

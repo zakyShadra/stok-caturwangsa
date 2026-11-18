@@ -10,8 +10,9 @@
 //     Melihat foto selfie absen + bukti kerja + laporan. TIDAK absen
 //     sendiri, TIDAK mengelola karyawan.
 //   Manager (Ibu Abe): hanya cek laporan tiap karyawan (read-only) +
-//     melihat absensi/foto/bukti kerja. Absen sendiri (catatan server,
-//     disetujui Bos), ajukan Izin/Cuti, scan stok.
+//     melihat absensi/foto/bukti kerja + menandai bukti kerja yang
+//     sudah dicek (marker, bukan approval). Absen sendiri (catatan
+//     server, disetujui Bos), ajukan Izin/Cuti, scan stok.
 //     TIDAK mengelola karyawan, TIDAK menyetujui apa pun.
 //   Staff: absen masuk/pulang + selfie + upload bukti kerja + lihat
 //     riwayat sendiri + mengajukan Izin/Cuti. Scan stok. TIDAK bisa
@@ -71,6 +72,14 @@ export interface EvidenceFile {
   sizeLabel: string;
   url: string | null;
   date?: string; // YYYY-MM-DD, tanggal bukti dilampirkan
+}
+
+// Marker review bukti kerja oleh Manager: satu per karyawan per
+// hari. Marker, BUKAN approval: hanya mencatat Manager sudah
+// memeriksa bukti kerja hari itu.
+export interface EvidenceReview {
+  reviewedBy: string; // nama yang menandai, misal "Ibu Abe"
+  reviewedAt: string; // "YYYY-MM-DD HH:MM" WIB
 }
 
 // Verifikasi absen satu karyawan untuk satu hari: bukti masuk dan

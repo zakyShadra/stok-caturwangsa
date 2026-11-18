@@ -5,7 +5,8 @@
 // - Bos: antrean "Menunggu persetujuan" (absen + pengajuan Izin/Cuti)
 //   dengan tombol Setujui/Tolak, plus kartu per karyawan.
 // - Manager/Admin: melihat antrean dan statusnya saja, tanpa tombol
-//   aksi (mereka tidak menyetujui apa pun).
+//   aksi persetujuan (mereka tidak menyetujui apa pun). Manager
+//   menandai bukti kerja yang sudah dicek (marker, bukan approval).
 // Rekap bulanan hanya menghitung catatan yang sudah disetujui Bos;
 // yang pending ditampilkan terpisah, yang ditolak tidak dihitung.
 // Foto selfie absen (jam + jarak dari kantor) bisa diketuk untuk
@@ -21,6 +22,7 @@ import {
   EMPLOYEES,
   formatDateID,
   jakartaDate,
+  shortDateID,
 } from '../lib/attendance';
 import type { ApprovalStatus, CheckVerification, EvidenceFile } from '../lib/attendance';
 import { AttendanceBadge, BigButton, EmptyState, PageHeader, SegmentedControl } from '../components/ui';
@@ -163,16 +165,25 @@ function VerificationRow({
   );
 }
 
+// "2026-11-18 17:20" (WIB) -> "18 Nov 2026 pukul 17.20".
+function formatReviewTime(stamp: string): string {
+  const datePart = stamp.slice(0, 10);
+  const timePart = stamp.slice(11, 16).replace(':', '.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return stamp;
+  return `${shortDateID(datePart)} pukul ${timePart}`;
+}
+
 export default function Attendance() {
   const { user } = useAuth();
   const isStaff = user?.role === 'Staff';
   const isBos = user?.role === 'Bos';
+  const isManager = user?.role === 'Manager';
   // Karyawan yang terikat ke akun yang login (null = Bos, tidak absen).
   const myEmployeeId = user?.employeeId ?? null;
   // ID untuk pencarian data "milik saya": -1 tidak pernah cocok dengan
   // karyawan mana pun, jadi aman dipakai saat akun tidak terikat karyawan.
   const myId = myEmployeeId ?? -1;
-  const { records, requestLeave, setApproval, myCheckIn, evidenceByEmployee, verificationByRecord, addEvidence, removeEvidence, error: attendanceError, clearError, ensureMonth } = useAttendanceState();
+  const { records, requestLeave, setApproval, myCheckIn, evidenceByEmployee, verificationByRecord, reviewsByRecord, reviewEvidence, addEvidence, removeEvidence, error: attendanceError, clearError, ensureMonth } = useAttendanceState();
   const [selectedDate, setSelectedDate] = useState(jakartaDate(0));
   const [lightbox, setLightbox] = useState<{ url: string; label: string } | null>(null);
   const [note, setNote] = useState('');
@@ -488,6 +499,7 @@ export default function Attendance() {
           {dayRecords.map((r, i) => {
             const evidence = (evidenceByEmployee[r.employeeId] ?? []).filter((f) => f.date === selectedDate);
             const isLeave = r.status === 'Izin' || r.status === 'Cuti';
+            const review = reviewsByRecord[verificationKey(r.employeeId, selectedDate)];
             return (
               <article
                 key={r.employeeId}
@@ -536,6 +548,28 @@ export default function Attendance() {
                         ))}
                       </div>
                     )}
+                    {/* Review Manager: marker "sudah dicek", bukan
+                        approval. Hanya Manager yang bisa menandai;
+                        badge-nya terlihat Bos/Admin/Manager. Tombol
+                        hanya muncul kalau ada bukti hari itu. */}
+                    {evidence.length > 0 ? (
+                      <div className="mt-3">
+                        {review ? (
+                          <p className="rounded-button bg-success/10 px-4 py-3 text-base text-ink">
+                            <span className="font-bold text-success-ink">Sudah dicek Manager</span>
+                            {` oleh ${review.reviewedBy}, ${formatReviewTime(review.reviewedAt)}`}
+                          </p>
+                        ) : isManager ? (
+                          <button
+                            type="button"
+                            onClick={() => void reviewEvidence(r.employeeId, selectedDate)}
+                            className="btn-press flex min-h-[48px] w-full items-center justify-center rounded-button bg-primary-soft/60 text-base font-bold text-primary-deep"
+                          >
+                            Tandai sudah dicek
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 {/* Selfie absen: semua role melihatnya. Staf hanya pernah

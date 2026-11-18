@@ -8,13 +8,14 @@
 // Komponen lain tidak perlu tahu sumbernya; bentuk fungsinya sama.
 //
 // Endpoint Workers (lihat worker/src/attendance.ts):
-//   GET    /api/absen?from&to     -> catatan + verifikasi + bukti
+//   GET    /api/absen?from&to     -> catatan + verifikasi + bukti + reviews
 //   POST   /api/absen/check-in    -> absen masuk + selfie
 //   POST   /api/absen/check-out   -> absen pulang + selfie
 //   POST   /api/absen/approval    -> Bos Setujui/Tolak
 //   POST   /api/absen/leave       -> pengajuan Izin/Cuti
 //   POST   /api/absen/evidence    -> lampirkan bukti kerja
 //   DELETE /api/absen/evidence/:id -> hapus bukti kerja
+//   POST   /api/absen/evidence-review -> Manager menandai bukti sudah dicek
 //   GET    /api/absen/foto/:key   -> isi foto (dipakai tag img)
 //   GET    /api/absen/recap?month -> hitungan per karyawan
 import { fileToDataUrl } from './photo';
@@ -25,6 +26,7 @@ import type {
   CheckVerification,
   EmployeeVerification,
   EvidenceFile,
+  EvidenceReview,
 } from './attendance';
 
 export interface AttendanceBundle {
@@ -34,6 +36,8 @@ export interface AttendanceBundle {
   // selfie berbeda di tanggal berbeda dalam satu bulan.
   verificationByRecord: Record<string, EmployeeVerification>;
   evidenceByEmployee: Record<number, EvidenceFile[]>;
+  // Marker cek bukti kerja oleh Manager, kunci `${employeeId}:${date}`.
+  reviewsByRecord: Record<string, EvidenceReview>;
 }
 
 // Kunci verifikasi untuk satu catatan absen.
@@ -55,6 +59,7 @@ export interface AttendanceApi {
   requestLeave(employeeId: number, date: string, type: 'Izin' | 'Cuti'): Promise<void>;
   addEvidence(employeeId: number, date: string, files: File[]): Promise<EvidenceFile[]>;
   removeEvidence(employeeId: number, fileId: string): Promise<void>;
+  reviewEvidence(employeeId: number, date: string, reviewedBy: string): Promise<void>;
 }
 
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '');
@@ -88,14 +93,22 @@ interface RemoteRecord {
   evidence: EvidenceFile[];
 }
 
+interface RemoteReview {
+  employeeId: number;
+  date: string;
+  reviewedBy: string;
+  reviewedAt: string;
+}
+
 const remoteApi: AttendanceApi = {
   async list(from: string, to: string): Promise<AttendanceBundle> {
-    const data = await remoteFetch<{ records: RemoteRecord[] }>(
+    const data = await remoteFetch<{ records: RemoteRecord[]; reviews?: RemoteReview[] }>(
       `/api/absen?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
     );
     const records: AttendanceRecord[] = [];
     const verificationByRecord: Record<string, EmployeeVerification> = {};
     const evidenceByEmployee: Record<number, EvidenceFile[]> = {};
+    const reviewsByRecord: Record<string, EvidenceReview> = {};
     for (const r of data.records) {
       records.push({
         employeeId: r.employeeId,
@@ -112,7 +125,13 @@ const remoteApi: AttendanceApi = {
       const dated = r.evidence.map((e) => ({ ...e, date: r.date }));
       evidenceByEmployee[r.employeeId] = [...(evidenceByEmployee[r.employeeId] ?? []), ...dated];
     }
-    return { records, verificationByRecord, evidenceByEmployee };
+    for (const r of data.reviews ?? []) {
+      reviewsByRecord[verificationKey(r.employeeId, r.date)] = {
+        reviewedBy: r.reviewedBy,
+        reviewedAt: r.reviewedAt,
+      };
+    }
+    return { records, verificationByRecord, evidenceByEmployee, reviewsByRecord };
   },
 
   async checkIn(input: CheckInput): Promise<void> {
@@ -190,6 +209,13 @@ const remoteApi: AttendanceApi = {
       method: 'DELETE',
     });
   },
+
+  async reviewEvidence(employeeId: number, date: string, reviewedBy: string): Promise<void> {
+    await remoteFetch<{ ok: boolean }>('/api/absen/evidence-review', {
+      method: 'POST',
+      body: JSON.stringify({ employeeId, date, reviewedBy }),
+    });
+  },
 };
 
 // ---- Sumber data lokal (localStorage, tanpa backend) ----
@@ -197,6 +223,7 @@ const remoteApi: AttendanceApi = {
 const RECORDS_KEY = 'sabunpalem-absensi';
 const VERIF_KEY = 'sabunpalem-verifikasi-hari-ini';
 const EVIDENCE_KEY = 'sabunpalem-bukti-kerja';
+const REVIEWS_KEY = 'sabunpalem-review-bukti';
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -264,6 +291,27 @@ function saveLocalEvidence(byEmployee: Record<number, EvidenceFile[]>) {
   }
 }
 
+// Marker cek bukti (kunci `${employeeId}:${date}`), tidak dibatasi
+// tanggal hari ini: review tanggal lama tetap harus tampil.
+function loadLocalReviews(): Record<string, EvidenceReview> {
+  try {
+    const raw = localStorage.getItem(REVIEWS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as { reviews?: Record<string, EvidenceReview> };
+    return parsed.reviews ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLocalReviews(reviews: Record<string, EvidenceReview>) {
+  try {
+    localStorage.setItem(REVIEWS_KEY, JSON.stringify({ reviews }));
+  } catch {
+    // abaikan
+  }
+}
+
 let evidenceCounter = 100;
 
 const localApi: AttendanceApi = {
@@ -275,10 +323,17 @@ const localApi: AttendanceApi = {
     for (const [employeeId, v] of Object.entries(ver)) {
       verificationByRecord[verificationKey(Number(employeeId), today)] = v;
     }
+    const allReviews = loadLocalReviews();
+    const reviewsByRecord: Record<string, EvidenceReview> = {};
+    for (const [key, review] of Object.entries(allReviews)) {
+      const date = key.split(':')[1] ?? '';
+      if (date >= from && date <= to) reviewsByRecord[key] = review;
+    }
     return {
       records,
       verificationByRecord,
       evidenceByEmployee: loadLocalEvidence(),
+      reviewsByRecord,
     };
   },
 
@@ -383,6 +438,15 @@ const localApi: AttendanceApi = {
       [employeeId]: (byEmployee[employeeId] ?? []).filter((f) => f.id !== fileId),
     };
     saveLocalEvidence(next);
+  },
+
+  async reviewEvidence(employeeId: number, date: string, reviewedBy: string): Promise<void> {
+    const reviews = loadLocalReviews();
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    reviews[verificationKey(employeeId, date)] = { reviewedBy, reviewedAt: stamp };
+    saveLocalReviews(reviews);
   },
 };
 

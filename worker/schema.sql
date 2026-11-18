@@ -54,3 +54,16 @@ CREATE TABLE IF NOT EXISTS evidence (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_evidence_emp_date ON evidence(employee_id, date);
+
+-- Review bukti kerja oleh Manager: satu marker per karyawan per
+-- hari. Marker, BUKAN approval: hanya mencatat Manager sudah
+-- memeriksa bukti kerja hari itu. Bos/Admin melihat marker yang
+-- sama dari HP mereka (server-backed).
+CREATE TABLE IF NOT EXISTS evidence_reviews (
+  employee_id INTEGER NOT NULL,
+  date TEXT NOT NULL,
+  reviewed_by TEXT NOT NULL,
+  reviewed_at TEXT NOT NULL,
+  PRIMARY KEY (employee_id, date)
+);
+CREATE INDEX IF NOT EXISTS idx_evidence_reviews_date ON evidence_reviews(date);
