@@ -11,6 +11,7 @@ import type { JSX } from 'react';
 import { AuthProvider, useAuth } from './lib/auth';
 import { canViewMarketing } from './lib/attendance';
 import { AttendanceProvider } from './lib/attendance-state';
+import { EmployeesProvider, useEmployees } from './lib/employees';
 import { StockProvider } from './lib/store';
 import Layout from './components/Layout';
 import Login from './pages/Login';
@@ -40,13 +41,14 @@ function RequireManagement({ children }: { children: JSX.Element }) {
   return children;
 }
 
-// Pemasaran: manajemen + karyawan yang ditandai canViewMarketing
-// (lihat canViewMarketing di attendance.ts). Yang tidak berhak
-// dialihkan ke Beranda.
+// Pemasaran: manajemen + karyawan yang punya capability
+// 'view-marketing' (lihat canViewMarketing di attendance.ts). Yang
+// tidak berhak dialihkan ke Beranda.
 function RequireMarketing({ children }: { children: JSX.Element }) {
   const { user } = useAuth();
+  const { employees } = useEmployees();
   if (!user) return <Navigate to="/login" replace />;
-  if (!canViewMarketing(user)) return <Navigate to="/" replace />;
+  if (!canViewMarketing(user, employees)) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -57,13 +59,14 @@ export default function App() {
           /stok-caturwangsa/, tanpa basename semua rute gagal cocok
           dan jatuh ke "*" -> "/". */}
       <BrowserRouter basename={import.meta.env.BASE_URL}>
-        {/* Provider di luar Routes supaya state absensi dan stok tidak
-            hilang saat pindah halaman, termasuk keluar lalu masuk lagi
-            sebagai akun lain (tanpa reload). */}
+        {/* Provider di luar Routes supaya state absensi, stok, dan
+            karyawan tidak hilang saat pindah halaman, termasuk keluar
+            lalu masuk lagi sebagai akun lain (tanpa reload). */}
         <AttendanceProvider>
           <StockProvider>
-            <div className="min-h-screen bg-canvas font-sans text-ink">
-              <Routes>
+            <EmployeesProvider>
+              <div className="min-h-screen bg-canvas font-sans text-ink">
+                <Routes>
                 <Route path="/login" element={<Login />} />
                 <Route
                   element={
@@ -96,8 +99,8 @@ export default function App() {
               <Route path="scan/:type" element={<Scan />} />
               <Route path="stok" element={<Stock />} />
               <Route path="riwayat" element={<History />} />
-              {/* Pemasaran: manajemen + karyawan yang ditandai
-                  canViewMarketing (Dyas, data analyst). */}
+              {/* Pemasaran: manajemen + karyawan yang punya capability
+                  'view-marketing' (Dyas, data analyst). */}
               <Route
                 path="pemasaran"
                 element={
@@ -118,7 +121,8 @@ export default function App() {
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-            </div>
+              </div>
+            </EmployeesProvider>
           </StockProvider>
         </AttendanceProvider>
       </BrowserRouter>

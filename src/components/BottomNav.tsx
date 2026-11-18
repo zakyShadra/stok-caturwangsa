@@ -1,6 +1,6 @@
 // Navigasi bawah mobile: 5-6 item (Beranda, Absensi, Stok, Riwayat,
-// [Pemasaran], Akun). Pemasaran disembunyikan untuk staf tanpa flag
-// canViewMarketing, grid menyesuaikan (5 vs 6 kolom). Satu pill yang
+// [Pemasaran], Akun). Pemasaran disembunyikan untuk staf tanpa
+// capability 'view-marketing', grid menyesuaikan (5 vs 6 kolom). Satu pill yang
 // BERJALAN ke item aktif (code-xr pola 1), bukan tiap item menyala
 // sendiri. Posisi diukur dari DOM, digerakkan dengan transform,
 // 0.45s cubic-bezier(.22,1,.36,1).
@@ -9,6 +9,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { canViewMarketing } from '../lib/attendance';
+import { useEmployees } from '../lib/employees';
 
 const ITEMS = [
   { to: '/', label: 'Beranda', icon: HomeIcon },
@@ -78,16 +79,17 @@ function PersonIcon({ active }: { active: boolean }) {
 export default function BottomNav() {
   const location = useLocation();
   const { user } = useAuth();
+  const { employees } = useEmployees();
   // Ref di grid dalam (max-w-720, di tengah), BUKAN di nav luar
   // (lebar penuh): pill diposisikan relatif terhadap grid ini,
   // jadi pengukurannya harus terhadap grid yang sama.
   const gridRef = useRef<HTMLDivElement>(null);
   const [pill, setPill] = useState({ left: 0, width: 0, ready: false });
 
-  // Pemasaran hanya untuk manajemen + karyawan yang ditandai
-  // canViewMarketing; staf lain tidak melihat itemnya.
+  // Pemasaran hanya untuk manajemen + karyawan yang punya capability
+  // 'view-marketing'; staf lain tidak melihat itemnya.
   const visibleItems = ITEMS.filter(
-    (item) => item.to !== '/pemasaran' || canViewMarketing(user),
+    (item) => item.to !== '/pemasaran' || canViewMarketing(user, employees),
   );
 
   // -1 kalau halaman ini tidak ada di nav bawah (Karyawan, Laporan):

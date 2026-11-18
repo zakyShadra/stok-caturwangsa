@@ -47,10 +47,9 @@ export interface Employee {
   position: string;
   phone: string;
   active: boolean;
-  // Boleh melihat menu Pemasaran (omset). Hanya untuk karyawan yang
-  // memang butuh angka penjualan, misal data analyst. BUKAN role
-  // baru: role = level izin, jabatan = atribut.
-  canViewMarketing?: boolean;
+  // Capability khusus di luar role (lihat hasCapability). Diubah
+  // Admin lewat form Karyawan, bukan lewat kode.
+  capabilities?: string[];
 }
 
 export interface AttendanceRecord {
@@ -113,23 +112,34 @@ export const USERS: User[] = [
 // jadi tidak ada data lama yang terikat ke ID karyawan ini.
 export const EMPLOYEES: Employee[] = [
   { id: 1, name: 'Putra', division: 'Umum', position: 'Staff', phone: '', active: true },
-  { id: 2, name: 'Dyas Nakata', division: 'Umum', position: 'Staff', phone: '', active: true, canViewMarketing: true },
+  { id: 2, name: 'Dyas Nakata', division: 'Umum', position: 'Staff', phone: '', active: true, capabilities: ['view-marketing'] },
   { id: 3, name: 'Pak Andy', division: 'Umum', position: 'Staff', phone: '', active: true },
   { id: 4, name: 'Maya Putri', division: 'Admin', position: 'Staff Administrasi', phone: '0817-6789-0123', active: true },
   { id: 5, name: 'Zaky Shadra', division: 'IT', position: 'Admin', phone: '', active: true },
 ];
 
+// Capability: izin tambahan per karyawan, di luar role. Role = level
+// izin, jabatan = atribut, capability = kemampuan khusus per orang
+// (misal 'view-marketing' untuk data analyst). Array ini scale untuk
+// orang maupun capability baru: capability baru = string baru + satu
+// cek guard, bukan role class baru. Daftar capability yang dipakai:
+// 'view-marketing' = boleh melihat menu Pemasaran (omset).
+export function hasCapability(
+  employeeId: number | null,
+  capability: string,
+  employees: Employee[],
+): boolean {
+  if (employeeId === null) return false;
+  return employees.find((e) => e.id === employeeId)?.capabilities?.includes(capability) ?? false;
+}
+
 // Akses menu Pemasaran: semua manajemen (Admin/Bos/Manager) +
-// karyawan yang ditandai canViewMarketing (saat ini hanya Dyas
-// Nakata, data analyst yang meminta menu ini). Role = level izin,
-// jabatan = atribut: kalau nanti ada analis lain, tandai flag-nya,
-// jangan bikin role baru. Cara ini mencegah role explosion saat
-// scale-up (satu role per jabatan = kelas peran yang meledak).
-export function canViewMarketing(user: User | null): boolean {
+// karyawan yang punya capability 'view-marketing' (saat ini hanya
+// Dyas Nakata, data analyst yang meminta menu ini).
+export function canViewMarketing(user: User | null, employees: Employee[]): boolean {
   if (!user) return false;
   if (user.role !== 'Staff') return true;
-  if (user.employeeId === null) return false;
-  return EMPLOYEES.find((e) => e.id === user.employeeId)?.canViewMarketing === true;
+  return hasCapability(user.employeeId, 'view-marketing', employees);
 }
 
 // Karyawan yang bisa melampirkan bukti kerja: hanya karyawan yang

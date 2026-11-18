@@ -16,10 +16,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { useAttendanceState } from '../lib/attendance-state';
+import { useEmployees } from '../lib/employees';
 import { verificationKey } from '../lib/attendance-api';
 import {
   canUploadEvidence,
-  EMPLOYEES,
   formatDateID,
   jakartaDate,
   shortDateID,
@@ -178,6 +178,7 @@ export default function Attendance() {
   const isStaff = user?.role === 'Staff';
   const isBos = user?.role === 'Bos';
   const isManager = user?.role === 'Manager';
+  const { employees } = useEmployees();
   // Karyawan yang terikat ke akun yang login (null = Bos/Manager, tidak absen).
   const myEmployeeId = user?.employeeId ?? null;
   // ID untuk pencarian data "milik saya": -1 tidak pernah cocok dengan
@@ -212,8 +213,8 @@ export default function Attendance() {
   // Antrean persetujuan: semua catatan pending, semua tanggal.
   const pending = records.filter((r) => r.approval === 'pending');
 
-  const employeeName = (id: number) => EMPLOYEES.find((e) => e.id === id)?.name ?? '-';
-  const employeeDivision = (id: number) => EMPLOYEES.find((e) => e.id === id)?.division ?? '-';
+  const employeeName = (id: number) => employees.find((e) => e.id === id)?.name ?? '-';
+  const employeeDivision = (id: number) => employees.find((e) => e.id === id)?.division ?? '-';
 
   // Rekap bulan ini (per karyawan): hanya yang sudah disetujui yang
   // dihitung. Yang pending ditampilkan terpisah di bawah rekap.
@@ -221,7 +222,7 @@ export default function Attendance() {
   const monthApproved = records.filter((r) => r.date.startsWith(monthPrefix) && r.approval === 'approved');
   const monthPending = records.filter((r) => r.date.startsWith(monthPrefix) && r.approval === 'pending').length;
   const recap = useMemo(() => {
-    const list = isStaff ? EMPLOYEES.filter((e) => e.id === myId) : EMPLOYEES;
+    const list = isStaff ? employees.filter((e) => e.id === myId) : employees;
     return list.map((e) => {
       const mine = monthApproved.filter((r) => r.employeeId === e.id);
       return {
@@ -230,7 +231,7 @@ export default function Attendance() {
         izin: mine.filter((r) => r.status === 'Izin' || r.status === 'Cuti').length,
       };
     });
-  }, [monthApproved, isStaff, myId]);
+  }, [monthApproved, isStaff, myId, employees]);
 
   // Bukti kerja hari itu: berapa dari yang hadir (yang sudah
   // disetujui) yang sudah melampirkan bukti di tanggal itu. Hanya

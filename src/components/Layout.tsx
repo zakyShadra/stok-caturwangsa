@@ -8,7 +8,8 @@ import type { ComponentType } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { canViewMarketing } from '../lib/attendance';
-import type { Role, User } from '../lib/attendance';
+import type { Employee, Role, User } from '../lib/attendance';
+import { useEmployees } from '../lib/employees';
 import BottomNav from './BottomNav';
 
 function IconHome() {
@@ -111,16 +112,16 @@ function IconLogout() {
 // small-caps + padding, bukan garis divider. Karyawan muncul untuk
 // Admin/Bos/Manager (hanya Admin yang mengelola; Bos/Manager melihat
 // saja); Laporan untuk Admin/Bos/Manager; Staff tidak melihat keduanya.
-// Pemasaran untuk manajemen + karyawan yang ditandai canViewMarketing
-// (Dyas, data analyst): aturan tampilnya kustom (visible), bukan
-// sekadar daftar roles.
+// Pemasaran untuk manajemen + karyawan yang punya capability
+// 'view-marketing' (Dyas, data analyst): aturan tampilnya kustom
+// (visible), bukan sekadar daftar roles.
 interface NavItem {
   to: string;
   label: string;
   Icon: ComponentType;
   roles: Role[];
   // Aturan tampil kustom; kalau ada, menggantikan cek roles.
-  visible?: (user: User) => boolean;
+  visible?: (user: User, employees: Employee[]) => boolean;
 }
 
 const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
@@ -157,6 +158,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
 
 export default function Layout() {
   const { user, logout } = useAuth();
+  const { employees } = useEmployees();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -234,7 +236,11 @@ export default function Layout() {
           />
           {NAV_GROUPS.map((group) => {
             const items = group.items.filter(
-              (item) => user && (item.visible ? item.visible(user) : item.roles.includes(user.role)),
+              (item) =>
+                user &&
+                (item.visible
+                  ? item.visible(user, employees)
+                  : item.roles.includes(user.role)),
             );
             if (items.length === 0) return null;
             return (

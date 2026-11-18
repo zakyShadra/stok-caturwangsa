@@ -9,10 +9,10 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { useAttendanceState } from '../lib/attendance-state';
+import { useEmployees } from '../lib/employees';
 import { useStock } from '../lib/store';
 import {
   canUploadEvidence,
-  EMPLOYEES,
   formatDateID,
   jakartaDate,
 } from '../lib/attendance';
@@ -121,6 +121,7 @@ export default function Home() {
   const isStaff = user?.role === 'Staff';
   const isBos = user?.role === 'Bos';
   const isManager = user?.role === 'Manager';
+  const { employees } = useEmployees();
   // Karyawan yang terikat ke akun yang login (null = Bos/Manager, tidak absen).
   const myEmployeeId = user?.employeeId ?? null;
   const clock = useJakartaClock();
@@ -151,7 +152,7 @@ export default function Home() {
   const approvedToday = todayRecords.filter((r) => r.approval === 'approved');
   const pendingAll = records.filter((r) => r.approval === 'pending');
 
-  const totalKaryawan = EMPLOYEES.length;
+  const totalKaryawan = employees.length;
   const hadir = approvedToday.filter((r) => r.status === 'Hadir').length;
   // Jam kerja fleksibel: tidak ada konsep Telat. Kolom kedua hero
   // menampilkan siapa yang sudah absen masuk hari ini + jam masuknya.
@@ -161,10 +162,10 @@ export default function Home() {
   const checkedInIds = new Set(
     todayRecords.filter((r) => r.approval !== 'rejected').map((r) => r.employeeId),
   );
-  const belumAbsen = EMPLOYEES.filter((e) => !checkedInIds.has(e.id));
+  const belumAbsen = employees.filter((e) => !checkedInIds.has(e.id));
 
-  const employeeName = (id: number) => EMPLOYEES.find((e) => e.id === id)?.name ?? '-';
-  const employeeDivision = (id: number) => EMPLOYEES.find((e) => e.id === id)?.division ?? '-';
+  const employeeName = (id: number) => employees.find((e) => e.id === id)?.name ?? '-';
+  const employeeDivision = (id: number) => employees.find((e) => e.id === id)?.division ?? '-';
 
   // Rekap saya bulan ini (akun yang login, lewat user.employeeId).
   // Hanya yang sudah disetujui yang dihitung; yang pending ditampilkan

@@ -1,9 +1,13 @@
 // Halaman Karyawan (Admin/Bos/Manager). Daftar karyawan dalam bentuk
 // kartu; tambah/ubah/hapus hanya Admin. Bos/Manager melihat saja
-// (matriks peran, audit 18 Nov 2026).
+// (matriks peran, audit 18 Nov 2026). Form tambah/ubah punya checkbox
+// "Bisa lihat Pemasaran" yang mengatur capability 'view-marketing'
+// (analis baru tinggal centang, tanpa ubah kode). Daftar karyawan
+// disimpan di EmployeesProvider supaya perubahan langsung terlihat
+// di guard akses dalam sesi yang sama.
 import { useState } from 'react';
 import { useAuth } from '../lib/auth';
-import { EMPLOYEES } from '../lib/attendance';
+import { useEmployees } from '../lib/employees';
 import type { Employee } from '../lib/attendance';
 import { BigButton, PageHeader } from '../components/ui';
 
@@ -13,12 +17,12 @@ import { BigButton, PageHeader } from '../components/ui';
 // karyawan placeholder; select tanpa opsi yang cocok tampil kosong.
 const DIVISIONS = ['Produksi', 'Gudang', 'Admin', 'Sales', 'IT', 'Umum'];
 
-const emptyForm = { name: '', division: 'Produksi', position: '', phone: '' };
+const emptyForm = { name: '', division: 'Produksi', position: '', phone: '', marketing: false };
 
 export default function Employees() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
-  const [employees, setEmployees] = useState<Employee[]>(EMPLOYEES);
+  const { employees, addEmployee, updateEmployee, removeEmployee } = useEmployees();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -33,26 +37,46 @@ export default function Employees() {
 
   const openEdit = (emp: Employee) => {
     setEditingId(emp.id);
-    setForm({ name: emp.name, division: emp.division, position: emp.position, phone: emp.phone });
+    setForm({
+      name: emp.name,
+      division: emp.division,
+      position: emp.position,
+      phone: emp.phone,
+      marketing: (emp.capabilities ?? []).includes('view-marketing'),
+    });
     setShowForm(true);
     setNote('');
   };
 
   const handleDelete = (id: number, name: string) => {
     if (!window.confirm(`Hapus ${name} dari daftar karyawan?`)) return;
-    setEmployees((prev) => prev.filter((e) => e.id !== id));
+    removeEmployee(id);
     setNote(`${name} sudah dihapus.`);
   };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) return;
+    // Capability 'view-marketing' dari checkbox; capability lain yang
+    // sudah ada dipertahankan (jangan menimpa array-nya mentah-mentah).
+    const kept = (
+      editingId === null
+        ? []
+        : (employees.find((x) => x.id === editingId)?.capabilities ?? [])
+    ).filter((c) => c !== 'view-marketing');
+    const capabilities = form.marketing ? [...kept, 'view-marketing'] : kept;
+    const data = {
+      name: form.name,
+      division: form.division,
+      position: form.position,
+      phone: form.phone,
+      capabilities,
+    };
     if (editingId === null) {
-      const nextId = Math.max(...employees.map((x) => x.id), 0) + 1;
-      setEmployees((prev) => [...prev, { id: nextId, ...form, active: true }]);
+      addEmployee(data);
       setNote(`${form.name} sudah ditambahkan.`);
     } else {
-      setEmployees((prev) => prev.map((x) => (x.id === editingId ? { ...x, ...form } : x)));
+      updateEmployee(editingId, data);
       setNote(`${form.name} sudah diperbarui.`);
     }
     setShowForm(false);
@@ -140,6 +164,20 @@ export default function Employees() {
               className={inputCls}
             />
           </div>
+          <div>
+            <label className="flex min-h-[56px] cursor-pointer items-center gap-3 rounded-button border border-hairline bg-surface px-4">
+              <input
+                type="checkbox"
+                checked={form.marketing}
+                onChange={(e) => setForm({ ...form, marketing: e.target.checked })}
+                className="h-5 w-5 accent-[#0F6F72]"
+              />
+              <span className="text-base font-bold text-ink">Bisa lihat Pemasaran</span>
+            </label>
+            <p className="mt-2 text-base text-ink-muted">
+              Analis baru cukup dicentang di sini, tidak perlu ubah kode.
+            </p>
+          </div>
           <div className="flex gap-3">
             <BigButton type="submit" tone="primary" className="flex-1">
               Simpan
@@ -165,6 +203,9 @@ export default function Employees() {
                 <p className="text-base text-ink-muted">
                   {e.phone ? `${e.division} · ${e.phone}` : e.division}
                 </p>
+                {(e.capabilities ?? []).includes('view-marketing') ? (
+                  <p className="text-base font-bold text-primary-deep">Bisa lihat Pemasaran</p>
+                ) : null}
               </div>
               <span
                 className={`inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-sm font-bold ${

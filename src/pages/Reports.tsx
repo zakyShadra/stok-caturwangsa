@@ -4,14 +4,16 @@
 // di Excel. Hanya catatan yang sudah disetujui Bos yang dihitung;
 // yang pending ditampilkan terpisah, yang ditolak tidak dihitung.
 import { useEffect, useMemo, useState } from 'react';
-import { EMPLOYEES, formatDateID, jakartaDate } from '../lib/attendance';
+import { formatDateID, jakartaDate } from '../lib/attendance';
 import { useAttendanceState } from '../lib/attendance-state';
+import { useEmployees } from '../lib/employees';
 import { BigButton, PageHeader } from '../components/ui';
 
 export default function Reports() {
   const [from, setFrom] = useState(jakartaDate(0));
   const [to, setTo] = useState(jakartaDate(0));
   const { records, ensureMonth } = useAttendanceState();
+  const { employees } = useEmployees();
 
   // Rentang bisa melewati bulan berjalan: muat bulan awal dan bulan
   // akhir dari server supaya laporannya lengkap.
@@ -27,7 +29,7 @@ export default function Reports() {
 
   const rows = useMemo(
     () =>
-      EMPLOYEES.map((e) => {
+      employees.map((e) => {
         const mine = filtered.filter((r) => r.employeeId === e.id);
         const approved = mine.filter((r) => r.approval === 'approved');
         return {
@@ -38,7 +40,7 @@ export default function Reports() {
           total: approved.length,
         };
       }).sort((a, b) => a.hadir - b.hadir || b.izin - a.izin),
-    [filtered],
+    [filtered, employees],
   );
 
   const totals = rows.reduce(
