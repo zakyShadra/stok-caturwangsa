@@ -23,8 +23,11 @@
 //   dan laporan hanya menghitung yang approved; yang rejected tidak
 //   masuk hitungan; yang pending ditampilkan terpisah.
 // - Staf melampirkan bukti kerjaan hari ini saat absen (foto/dokumen).
-// Data karyawan dan akun di bawah ini adalah data awal yang dipakai
-// sampai backend jadi. Nanti data ini tinggal di database.
+// Data karyawan di bawah ini adalah data awal (seed) + cadangan
+// kalau API tidak bisa dihubungi; sumber kebenaran adalah tabel
+// employees di D1 (lihat lib/employees-api.ts dan
+// worker/src/employees.ts). Akun login (USERS) masih daftar statis
+// sampai Cloudflare Access jadi.
 export type Role = 'Admin' | 'Bos' | 'Manager' | 'Staff';
 export type AttendanceStatus = 'Hadir' | 'Izin' | 'Cuti';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';

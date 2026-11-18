@@ -22,11 +22,14 @@ const emptyForm = { name: '', division: 'Produksi', position: '', phone: '', mar
 export default function Employees() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
-  const { employees, addEmployee, updateEmployee, removeEmployee } = useEmployees();
+  const { employees, addEmployee, updateEmployee, removeEmployee, error } = useEmployees();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [note, setNote] = useState('');
+  // Mencegah simpan ganda kalau tombol ditekan dua kali cepat:
+  // tiap simpan menulis ke server, jadi duplikat berarti dua karyawan.
+  const [saving, setSaving] = useState(false);
 
   const openAdd = () => {
     setEditingId(null);
@@ -48,15 +51,16 @@ export default function Employees() {
     setNote('');
   };
 
-  const handleDelete = (id: number, name: string) => {
+  const handleDelete = async (id: number, name: string) => {
     if (!window.confirm(`Hapus ${name} dari daftar karyawan?`)) return;
-    removeEmployee(id);
-    setNote(`${name} sudah dihapus.`);
+    const ok = await removeEmployee(id);
+    if (ok) setNote(`${name} sudah dihapus.`);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim()) return;
+    if (!form.name.trim() || saving) return;
+    setSaving(true);
     // Capability 'view-marketing' dari checkbox; capability lain yang
     // sudah ada dipertahankan (jangan menimpa array-nya mentah-mentah).
     const kept = (
@@ -72,13 +76,17 @@ export default function Employees() {
       phone: form.phone,
       capabilities,
     };
-    if (editingId === null) {
-      addEmployee(data);
-      setNote(`${form.name} sudah ditambahkan.`);
-    } else {
-      updateEmployee(editingId, data);
-      setNote(`${form.name} sudah diperbarui.`);
-    }
+    const ok =
+      editingId === null
+        ? await addEmployee(data)
+        : await updateEmployee(editingId, data);
+    setSaving(false);
+    if (!ok) return; // pesan kegagalan tampil dari error provider
+    setNote(
+      editingId === null
+        ? `${form.name} sudah ditambahkan.`
+        : `${form.name} sudah diperbarui.`,
+    );
     setShowForm(false);
   };
 
@@ -109,6 +117,12 @@ export default function Employees() {
       {note ? (
         <p className="mb-6 rounded-button bg-primary-soft/60 px-4 py-3 text-base font-bold text-primary-deep">
           {note}
+        </p>
+      ) : null}
+
+      {error ? (
+        <p className="mb-6 rounded-button bg-error/10 px-4 py-3 text-base font-bold text-error">
+          {error}
         </p>
       ) : null}
 
@@ -179,8 +193,8 @@ export default function Employees() {
             </p>
           </div>
           <div className="flex gap-3">
-            <BigButton type="submit" tone="primary" className="flex-1">
-              Simpan
+            <BigButton type="submit" tone="primary" className="flex-1" disabled={saving}>
+              {saving ? 'Menyimpan...' : 'Simpan'}
             </BigButton>
             <BigButton type="button" tone="secondary" onClick={() => setShowForm(false)} className="flex-1">
               Batal
