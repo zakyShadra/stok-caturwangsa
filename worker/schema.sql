@@ -67,3 +67,20 @@ CREATE TABLE IF NOT EXISTS evidence_reviews (
   PRIMARY KEY (employee_id, date)
 );
 CREATE INDEX IF NOT EXISTS idx_evidence_reviews_date ON evidence_reviews(date);
+
+-- Daftar karyawan: sumber kebenaran untuk halaman Karyawan + guard
+-- akses (capability 'view-marketing'). Sebelumnya daftar ini hanya
+-- hidup di memori sesi aplikasi (perubahan hilang saat refresh,
+-- tidak terlihat di HP lain). capabilities disimpan sebagai teks
+-- JSON (array string) karena D1 tidak punya tipe array. ID bukan
+-- AUTOINCREMENT: seed memakai ID tetap 1-5 dan tambah karyawan
+-- memakai max(id)+1 dari server.
+CREATE TABLE IF NOT EXISTS employees (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  division TEXT NOT NULL DEFAULT '',
+  position TEXT NOT NULL DEFAULT '',
+  phone TEXT NOT NULL DEFAULT '',
+  active INTEGER NOT NULL DEFAULT 1,
+  capabilities TEXT NOT NULL DEFAULT '[]'
+);

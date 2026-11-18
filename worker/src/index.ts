@@ -16,6 +16,12 @@
 //   POST /api/monthly/create -> buat tab bulanan di Sheet ({month: YYYY-MM})
 //   GET  /api/marketing   -> agregat penjualan offline dari sheet
 //          Analisis Penjualan Offline 2026 (live, cache maks 60 detik)
+//   GET  /api/karyawan    -> daftar karyawan (seed otomatis kalau kosong)
+//   POST /api/karyawan    -> tambah karyawan
+//   PUT  /api/karyawan/:id -> ubah karyawan
+//   DELETE /api/karyawan/:id -> hapus karyawan
+// Absensi + karyawan tinggal di D1 (lihat src/attendance.ts dan
+// src/employees.ts).
 //
 // Cron tiap tanggal 1 jam 00:00 WIB membuat tab bulanan baru di Sheet
 // (lihat wrangler.toml [triggers]).
@@ -23,6 +29,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { attendanceRoutes } from './attendance';
 import type { AttendanceEnv } from './attendance';
+import { employeesRoutes } from './employees';
 import { getMarketing } from './marketing';
 import { insertRowAtTop, readRange } from './sheets';
 import type { SheetsEnv } from './sheets';
@@ -55,7 +62,7 @@ app.use('*', async (c, next) => {
   const allowed = (c.env.ALLOWED_ORIGINS ?? '').split(',').map((s) => s.trim());
   return cors({
     origin: (origin) => (allowed.includes(origin) ? origin : allowed[0]),
-    allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type'],
   })(c, next);
 });
@@ -69,6 +76,9 @@ app.get('/', (c) => c.json({ ok: true, service: 'stok-sabun-palem' }));
 // Absensi: catatan + selfie + bukti kerja di D1 (lihat
 // src/attendance.ts). CORS yang sama dengan endpoint stok berlaku.
 app.route('/api/absen', attendanceRoutes);
+
+// Karyawan: daftar karyawan di D1 (lihat src/employees.ts).
+app.route('/api/karyawan', employeesRoutes);
 
 // GET /api/stock: baca Stok Terkini, gabung dengan katalog (id produk
 // berasal dari katalog, angka stok dari rumus Sheet).
