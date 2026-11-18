@@ -120,7 +120,7 @@ Hadir hijau, Telat oranye, Izin/Cuti biru.
   rekap saya bulan ini dan ringkasan stok.
 - Beranda Admin/Bos/Manager: panel "Perlu perhatian hari ini"
   (belum absen, telat, bukti kerja yang belum dilampirkan),
-  baris statistik, grafik batang 7 hari, stok menipis.
+  baris statistik, stok menipis. Bos tidak absen.
 - Absensi: kartu bukti kerja di atas untuk staf (tombol
   "Lampirkan File" setelah absen masuk, thumbnail + nama file +
   tombol Hapus). Untuk Admin/Bos/Manager: baris "Bukti kerja:
@@ -175,7 +175,7 @@ Hadir hijau, Telat oranye, Izin/Cuti biru.
 2. **Beranda** - staf: kartu absen hari ini + 3 tombol raksasa
    (Barang Masuk, Barang Keluar, Lihat Stok) + rekap bulan ini
    + ringkasan stok. Admin/Bos/Manager: panel perhatian +
-   statistik + grafik 7 hari + stok menipis.
+   statistik + stok menipis. Bos tidak absen.
 3. **Absensi** - staf: kartu bukti kerja (upload setelah absen
    masuk) + pilih tanggal + kartu absen saya. Admin/Bos/Manager:
    pilih tanggal + hitungan bukti kerja + form tandai Izin/Cuti

@@ -79,7 +79,8 @@ Lihat Stok), rekap saya bulan ini, ringkasan stok.
 
 Beranda Admin/Bos/Manager: panel "Perlu perhatian hari ini"
 (belum absen, telat, bukti kerja yang belum dilampirkan),
-statistik kehadiran, grafik 7 hari, stok menipis.
+statistik kehadiran, stok menipis. Bos tidak absen, dia hanya
+memantau daftar hadir dan bukti kerja.
 
 ## Alur absensi
 
@@ -118,7 +119,8 @@ stok per lokasi mengikuti pola tab Agustus 2026 (sebagian besar
 di Gudang Klinik). Riwayat awal dibuat dari keterangan yang ada
 di kartu kertas asli.
 
-Data karyawan: 10 karyawan, divisi Produksi/Gudang/Admin/Sales/IT.
+Data karyawan: 2 karyawan (Budi Santoso - Gudang, Maya Putri -
+Admin). Karyawan lain ditambahkan lewat halaman Karyawan.
 Logika absensi (alur masuk/pulang, batas telat 08:15, Izin/Cuti,
 rekap bulanan) diambil dari dashboard absensi lama (repo
 caturwangsa, sudah diarsip), tapi semua halaman absensi di sini

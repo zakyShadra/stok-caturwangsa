@@ -61,14 +61,7 @@ function makeThumb(label: string): string {
 function seedEvidence(): Record<number, EvidenceFile[]> {
   return {
     2: [
-      { id: 'ev-1', name: 'foto-packing-pagi.jpg', kind: 'image', sizeLabel: '1,2 MB', url: makeThumb('foto packing pagi') },
-    ],
-    5: [
-      { id: 'ev-2', name: 'foto-stok-gudang.jpg', kind: 'image', sizeLabel: '980 KB', url: makeThumb('foto stok gudang') },
-      { id: 'ev-3', name: 'catatan-barang-masuk.pdf', kind: 'doc', sizeLabel: '210 KB', url: null },
-    ],
-    6: [
-      { id: 'ev-4', name: 'foto-admin.jpg', kind: 'image', sizeLabel: '1,5 MB', url: makeThumb('foto admin') },
+      { id: 'ev-1', name: 'foto-admin.jpg', kind: 'image', sizeLabel: '1,5 MB', url: makeThumb('foto admin') },
     ],
   };
 }

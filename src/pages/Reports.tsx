@@ -6,7 +6,7 @@ import { EMPLOYEES, formatDateID, getAttendance, jakartaDate } from '../lib/atte
 import { BigButton, PageHeader } from '../components/ui';
 
 export default function Reports() {
-  const [from, setFrom] = useState(jakartaDate(-6));
+  const [from, setFrom] = useState(jakartaDate(0));
   const [to, setTo] = useState(jakartaDate(0));
   const records = useMemo(() => getAttendance(), []);
 
