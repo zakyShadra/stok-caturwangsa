@@ -132,7 +132,10 @@ export default function Home() {
   // Flow absen (cek lokasi GPS lalu foto selfie). null = tidak jalan.
   const [flow, setFlow] = useState<'masuk' | 'pulang' | null>(null);
 
-  const { products, loading } = useStock();
+  const { products, loading, error: stockError, refresh: refreshStock } = useStock();
+  // Stok gagal dimuat dan belum ada data sama sekali: jangan tampilkan
+  // angka 0 yang menyesatkan, tampilkan pesan error + tombol coba lagi.
+  const stockUnavailable = !loading && stockError !== null && products.length === 0;
   const menipisList = products.filter((p) => stockStatus(p) === 'menipis');
   const habisCount = products.filter((p) => stockStatus(p) === 'habis').length;
   const totalUnits = products.reduce((sum, p) => sum + totalStock(p), 0);
@@ -317,24 +320,28 @@ export default function Home() {
           {/* Ringkasan stok. */}
           <div className="entrance grid grid-cols-3 gap-3" style={{ animationDelay: '250ms' }}>
             <div className="rounded-card border border-hairline bg-surface p-4 text-center shadow-card">
-              <div className="text-3xl font-bold text-ink tabular-nums">{loading ? '-' : products.length}</div>
+              <div className="text-3xl font-bold text-ink tabular-nums">{loading || stockUnavailable ? '-' : products.length}</div>
               <div className="mt-1 text-sm font-semibold text-ink-muted">Produk</div>
             </div>
             <div className="rounded-card border border-hairline bg-surface p-4 text-center shadow-card">
-              <div className="text-3xl font-bold text-warning tabular-nums">{loading ? '-' : menipisList.length}</div>
+              <div className="text-3xl font-bold text-warning tabular-nums">{loading || stockUnavailable ? '-' : menipisList.length}</div>
               <div className="mt-1 text-sm font-semibold text-ink-muted">Menipis</div>
             </div>
             <div className="rounded-card border border-hairline bg-surface p-4 text-center shadow-card">
-              <div className="text-3xl font-bold text-error tabular-nums">{loading ? '-' : habisCount}</div>
+              <div className="text-3xl font-bold text-error tabular-nums">{loading || stockUnavailable ? '-' : habisCount}</div>
               <div className="mt-1 text-sm font-semibold text-ink-muted">Habis</div>
             </div>
           </div>
 
-          <p className="text-center text-base text-ink-muted">
-            Total {loading ? '...' : totalUnits.toLocaleString('id-ID')} barang di gudang.
-            Semua barang keluar lewat gerbang gudang, jadi satu scan di sini
-            mencatat semua penjualan, online maupun offline.
-          </p>
+          {stockUnavailable ? (
+            <p className="text-center text-base font-bold text-error">{stockError}</p>
+          ) : (
+            <p className="text-center text-base text-ink-muted">
+              Total {loading ? '...' : totalUnits.toLocaleString('id-ID')} barang di gudang.
+              Semua barang keluar lewat gerbang gudang, jadi satu scan di sini
+              mencatat semua penjualan, online maupun offline.
+            </p>
+          )}
         </div>
       ) : (
         <div className="space-y-6">
@@ -449,6 +456,15 @@ export default function Home() {
             </div>
             {loading ? (
               <p className="mt-3 text-base text-ink-muted">Memuat stok...</p>
+            ) : stockUnavailable ? (
+              <div className="mt-3">
+                <p className="text-base font-bold text-error">{stockError}</p>
+                <div className="mt-3">
+                  <BigButton tone="secondary" onClick={() => void refreshStock()}>
+                    Coba lagi
+                  </BigButton>
+                </div>
+              </div>
             ) : menipisList.length === 0 ? (
               <p className="mt-3 text-base text-ink-muted">Tidak ada stok yang menipis.</p>
             ) : (
@@ -464,7 +480,9 @@ export default function Home() {
               </ul>
             )}
             <p className="mt-3 text-base text-ink-muted">
-              Total {loading ? '...' : totalUnits.toLocaleString('id-ID')} barang di gudang, {loading ? '...' : products.length} jenis produk.
+              {stockUnavailable
+                ? 'Total stok belum bisa ditampilkan.'
+                : `Total ${loading ? '...' : totalUnits.toLocaleString('id-ID')} barang di gudang, ${loading ? '...' : products.length} jenis produk.`}
             </p>
           </div>
 

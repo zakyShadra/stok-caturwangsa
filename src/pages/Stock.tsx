@@ -2,7 +2,7 @@
 // Ketuk kartu untuk detail (stok per lokasi + pergerakan terakhir).
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { EmptyState, PageHeader, SegmentedControl, StatusBadge } from '../components/ui';
+import { BigButton, EmptyState, PageHeader, SegmentedControl, StatusBadge } from '../components/ui';
 import { useStock } from '../lib/store';
 import { LOCATIONS, locationLabel, stockStatus, totalStock } from '../lib/types';
 import type { Product, StockStatus } from '../lib/types';
@@ -17,7 +17,7 @@ const FILTERS: { id: Filter; label: string }[] = [
 ];
 
 export default function Stock() {
-  const { products, loading } = useStock();
+  const { products, loading, error, refresh } = useStock();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('semua');
   const [openId, setOpenId] = useState<string | null>(null);
@@ -68,6 +68,19 @@ export default function Stock() {
 
       {loading ? (
         <p className="py-10 text-center text-lg text-ink-muted">Memuat stok...</p>
+      ) : error && products.length === 0 ? (
+        <div className="rounded-card border border-hairline bg-surface p-6 text-center shadow-card">
+          <p className="text-lg font-bold text-error">{error}</p>
+          <p className="mt-2 text-base text-ink-muted">
+            Stok tidak ditampilkan sebagai kosong, karena datanya belum
+            berhasil dimuat.
+          </p>
+          <div className="mt-4">
+            <BigButton tone="primary" onClick={() => void refresh()}>
+              Coba lagi
+            </BigButton>
+          </div>
+        </div>
       ) : filtered.length === 0 ? (
         <EmptyState
           title="Tidak ada produk"
