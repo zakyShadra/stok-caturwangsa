@@ -3,8 +3,8 @@
 //   di bawahnya 3 tombol raksasa stok (Barang Masuk, Barang Keluar,
 //   Lihat Stok), lalu rekap bulan ini.
 // - Admin/Bos/Manager: pertanyaan utama "Siapa yang belum absen?
-//   Siapa yang telat?" jadi hero, lalu angka ringkasan, stok yang
-//   menipis, dan grafik 7 hari terakhir.
+//   Siapa yang telat?" jadi hero, lalu angka ringkasan dan stok
+//   yang menipis. Bos tidak absen, dia hanya memantau.
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
@@ -15,9 +15,7 @@ import {
   LATE_CUTOFF,
   formatDateID,
   getAttendance,
-  getWeekSummary,
   jakartaDate,
-  shortDateID,
 } from '../lib/attendance';
 import { AttendanceBadge, BigButton } from '../components/ui';
 import { stockStatus, totalStock } from '../lib/types';
@@ -120,6 +118,7 @@ function ListIcon() {
 export default function Home() {
   const { user } = useAuth();
   const isStaff = user?.role === 'Staff';
+  const isBos = user?.role === 'Bos';
   const clock = useJakartaClock();
   const today = jakartaDate(0);
 
@@ -134,7 +133,6 @@ export default function Home() {
 
   const records = useMemo(() => getAttendance(), []);
   const todayRecords = records.filter((r) => r.date === today);
-  const weekSummary = useMemo(() => getWeekSummary(records), [records]);
 
   const totalKaryawan = EMPLOYEES.length;
   const hadir = todayRecords.filter((r) => r.status === 'Hadir').length;
@@ -154,8 +152,6 @@ export default function Home() {
   const myHadir = myMonth.filter((r) => r.status === 'Hadir').length;
   const myTelat = myMonth.filter((r) => r.status === 'Telat').length;
   const myIzin = myMonth.filter((r) => r.status === 'Izin' || r.status === 'Cuti').length;
-
-  const maxBar = Math.max(...weekSummary.map((d) => d.hadir + d.telat + d.izin), 1);
 
   // Bukti kerja: berapa dari yang hadir hari ini yang sudah melampirkan.
   const presentIds = todayRecords
@@ -405,33 +401,37 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Absen saya: manager juga karyawan, tapi posisinya sekunder. */}
-          <div className="entrance rounded-card border border-hairline bg-surface p-5 shadow-card" style={{ animationDelay: '100ms' }}>
-            <h2 className="text-lg font-bold text-ink">Absen saya</h2>
-            <p className="mt-1 text-base text-ink-muted">
-              <span className="font-bold text-primary-deep tabular-nums">{clock}</span> WIB
-              {myCheckIn ? (
-                <>
-                  {' · masuk '}
-                  <span className="font-bold text-ink tabular-nums">{myCheckIn}</span>
-                  {myStatus ? (
-                    <span className="ml-2">
-                      <AttendanceBadge status={myStatus} />
-                    </span>
-                  ) : null}
-                  {myCheckOut ? (
-                    <span>
-                      {', pulang '}
-                      <span className="font-bold text-ink tabular-nums">{myCheckOut}</span>
-                    </span>
-                  ) : null}
-                </>
-              ) : (
-                ' · Anda belum absen masuk hari ini.'
-              )}
-            </p>
-            {checkInButtons}
-          </div>
+          {/* Absen saya: admin dan manager juga karyawan, tapi
+              posisinya sekunder. Bos tidak absen, jadi kartu ini
+              tidak tampil untuk Bos. */}
+          {!isBos ? (
+            <div className="entrance rounded-card border border-hairline bg-surface p-5 shadow-card" style={{ animationDelay: '100ms' }}>
+              <h2 className="text-lg font-bold text-ink">Absen saya</h2>
+              <p className="mt-1 text-base text-ink-muted">
+                <span className="font-bold text-primary-deep tabular-nums">{clock}</span> WIB
+                {myCheckIn ? (
+                  <>
+                    {' · masuk '}
+                    <span className="font-bold text-ink tabular-nums">{myCheckIn}</span>
+                    {myStatus ? (
+                      <span className="ml-2">
+                        <AttendanceBadge status={myStatus} />
+                      </span>
+                    ) : null}
+                    {myCheckOut ? (
+                      <span>
+                        {', pulang '}
+                        <span className="font-bold text-ink tabular-nums">{myCheckOut}</span>
+                      </span>
+                    ) : null}
+                  </>
+                ) : (
+                  ' · Anda belum absen masuk hari ini.'
+                )}
+              </p>
+              {checkInButtons}
+            </div>
+          ) : null}
 
           {/* Stok yang menipis. */}
           <div className="entrance rounded-card border border-hairline bg-surface p-5 shadow-card" style={{ animationDelay: '150ms' }}>
@@ -460,42 +460,6 @@ export default function Home() {
             <p className="mt-3 text-base text-ink-muted">
               Total {loading ? '...' : totalUnits.toLocaleString('id-ID')} barang di gudang, {loading ? '...' : products.length} jenis produk.
             </p>
-          </div>
-
-          {/* Grafik 7 hari terakhir. */}
-          <div className="entrance rounded-card border border-hairline bg-surface p-6 shadow-card" style={{ animationDelay: '200ms' }}>
-            <h2 className="text-lg font-bold text-ink">Berapa yang hadir tiap hari, 7 hari terakhir?</h2>
-            <p className="mt-1 text-base text-ink-muted">
-              Hijau = hadir, oranye = telat, biru = izin/cuti. Angka di atas batang
-              = total yang tercatat hari itu.
-            </p>
-            <div className="mt-6 flex h-48 items-end gap-4">
-              {weekSummary.map((d, i) => {
-                const total = d.hadir + d.telat + d.izin;
-                const hadirH = (d.hadir / maxBar) * 100;
-                const telatH = (d.telat / maxBar) * 100;
-                const izinH = (d.izin / maxBar) * 100;
-                return (
-                  <div key={d.date} className="flex flex-1 flex-col items-center gap-2">
-                    <p className="font-bold tabular-nums text-ink">{total}</p>
-                    <div
-                      className="animate-bar flex w-full max-w-16 flex-col-reverse overflow-hidden rounded-t-md"
-                      style={{ height: '9rem', '--bar-i': i } as React.CSSProperties}
-                    >
-                      <div className="bg-success" style={{ height: `${hadirH}%` }} title={`Hadir: ${d.hadir}`} />
-                      <div className="bg-warning" style={{ height: `${telatH}%` }} title={`Telat: ${d.telat}`} />
-                      <div className="bg-info" style={{ height: `${izinH}%` }} title={`Izin/Cuti: ${d.izin}`} />
-                    </div>
-                    <p className="text-sm font-bold text-ink-muted">{shortDateID(d.date)}</p>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mt-4 flex flex-wrap gap-6 text-sm font-bold text-ink-muted">
-              <span className="flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-success" /> Hadir</span>
-              <span className="flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-warning" /> Telat</span>
-              <span className="flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-info" /> Izin / Cuti</span>
-            </div>
           </div>
 
           {/* Jalan pintas ke Karyawan dan Laporan (untuk manager di HP,
