@@ -139,6 +139,14 @@ export default function BarcodeScanner({ onDetected, onManual, paused }: Props) 
         },
         audio: false,
       });
+      // Balapan: komponen bisa sudah dilepas (pindah halaman/tutup tab)
+      // selagi getUserMedia masih menunggu. Kalau begitu, stream yang
+      // baru didapat harus langsung dimatikan, karena cleanup unmount
+      // sudah lewat dan tidak ada lagi yang mematikannya.
+      if (!videoRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       streamRef.current = stream;
       const track = stream.getVideoTracks()[0];
       const caps = track.getCapabilities?.() as { torch?: boolean } | undefined;
