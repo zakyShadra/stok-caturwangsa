@@ -10,10 +10,22 @@
 //   GET  /api/log         -> riwayat transaksi, terbaru di atas
 //   POST /api/scan        -> catat satu pergerakan (append ke Log)
 //   POST /api/scan/undo   -> batalkan satu transaksi (baris koreksi)
+//   GET  /api/monthly     -> stok akhir tiap produk per tanggal (?month=YYYY-MM)
+//   POST /api/monthly/create -> buat tab bulanan di Sheet ({month: YYYY-MM})
+//
+// Cron tiap tanggal 1 jam 00:00 WIB membuat tab bulanan baru di Sheet
+// (lihat wrangler.toml [triggers]).
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { appendRows, readRange, rowNumberFromRange } from './sheets';
 import type { SheetsEnv } from './sheets';
+import {
+  computeMonthly,
+  createMonthlyTab,
+  wibToday,
+  wibYearMonth,
+} from './monthly';
+import type { MonthlyLogRow } from './monthly';
 import {
   LOCATION_IDS,
   LOCATION_LABELS,
@@ -28,7 +40,7 @@ interface Env extends SheetsEnv {
 
 const STOCK_RANGE = "'Stok Terkini'!A2:I25";
 const LOG_RANGE = "'Log Transaksi'!A:H";
-const LOG_READ_RANGE = "'Log Transaksi'!A2:H";
+const LOG_READ_RANGE = "'Log Transaksi'!A2:I";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -88,22 +100,49 @@ interface LogRow {
   qty: number;
   note: string;
   staff: string;
+  tanggal: string; // YYYY-MM-DD (WIB), dari kolom I
+}
+
+// Tanggal WIB dari timestamp ISO. Dipakai sebagai cadangan kalau kolom
+// Tanggal kosong (baris lama sebelum kolom itu ada).
+function tanggalFromTimestamp(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
 }
 
 function parseLogRows(rows: string[][]): LogRow[] {
   return rows
-    .map((r, i) => ({
-      row: i + 2,
-      timestamp: r[0] ?? '',
-      barcode: r[1] ?? '',
-      name: r[2] ?? '',
-      location: r[3] ?? '',
-      type: r[4] ?? '',
-      qty: Number(r[5] ?? 0),
-      note: r[6] ?? '',
-      staff: r[7] ?? '',
-    }))
+    .map((r, i) => {
+      const timestamp = r[0] ?? '';
+      const tanggalRaw = r[8] ?? '';
+      return {
+        row: i + 2,
+        timestamp,
+        barcode: r[1] ?? '',
+        name: r[2] ?? '',
+        location: r[3] ?? '',
+        type: r[4] ?? '',
+        qty: Number(r[5] ?? 0),
+        note: r[6] ?? '',
+        staff: r[7] ?? '',
+        tanggal: /^\d{4}-\d{2}-\d{2}$/.test(tanggalRaw)
+          ? tanggalRaw
+          : tanggalFromTimestamp(timestamp),
+      };
+    })
     .filter((r) => r.name !== '' && (r.type === 'Masuk' || r.type === 'Keluar'));
+}
+
+function toMonthlyRows(rows: LogRow[]): MonthlyLogRow[] {
+  return rows
+    .filter((r) => r.tanggal !== '')
+    .map((r) => ({ name: r.name, type: r.type, qty: r.qty, tanggal: r.tanggal }));
 }
 
 // GET /api/log: riwayat terbaru di atas. Kolom Sisa dihitung dengan
@@ -293,6 +332,7 @@ app.post('/api/scan/undo', async (c) => {
       qty: Number(r[5] ?? 0),
       note: r[6] ?? '',
       staff: r[7] ?? '',
+      tanggal: tanggalFromTimestamp(r[0] ?? ''),
     };
     if (original.note === 'Stok Awal') {
       return jsonError(c, 400, 'Stok awal tidak bisa dibatalkan');
@@ -321,4 +361,62 @@ app.post('/api/scan/undo', async (c) => {
   }
 });
 
-export default app;
+// GET /api/monthly?month=YYYY-MM: stok akhir tiap produk per tanggal
+// dalam satu bulan + selisih harian. Tanpa parameter month, dipakai
+// bulan berjalan (WIB).
+app.get('/api/monthly', async (c) => {
+  const raw = c.req.query('month') ?? '';
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(raw);
+  const { year, month } = match
+    ? { year: Number(match[1]), month: Number(match[2]) }
+    : wibYearMonth();
+  if (raw !== '' && !match) {
+    return jsonError(c, 400, 'month harus format YYYY-MM');
+  }
+  try {
+    const rows = await readRange(c.env, LOG_READ_RANGE);
+    const parsed = parseLogRows(rows);
+    return c.json(computeMonthly(toMonthlyRows(parsed), year, month, wibToday()));
+  } catch (e) {
+    console.error('GET /api/monthly gagal:', e instanceof Error ? e.message : e);
+    return jsonError(c, 502, 'Gagal membaca riwayat dari spreadsheet');
+  }
+});
+
+// POST /api/monthly/create: buat tab bulanan di Sheet untuk bulan yang
+// diminta ({month: "YYYY-MM"}, kosong berarti bulan berjalan). Kalau
+// tab sudah ada, tidak dibuat lagi. Dipakai untuk membuat tab bulan
+// berjalan secara manual dan sebagai pemulihan kalau cron terlewat.
+app.post('/api/monthly/create', async (c) => {
+  let body: { month?: unknown } = {};
+  try {
+    body = (await c.req.json()) as { month?: unknown };
+  } catch {
+    // Body kosong: pakai bulan berjalan.
+  }
+  const raw = typeof body.month === 'string' ? body.month : '';
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(raw);
+  const { year, month } = match
+    ? { year: Number(match[1]), month: Number(match[2]) }
+    : wibYearMonth();
+  if (raw !== '' && !match) {
+    return jsonError(c, 400, 'month harus format YYYY-MM');
+  }
+  try {
+    const result = await createMonthlyTab(c.env, year, month);
+    return c.json(result);
+  } catch (e) {
+    console.error('POST /api/monthly/create gagal:', e instanceof Error ? e.message : e);
+    return jsonError(c, 502, 'Gagal membuat tab bulanan di spreadsheet');
+  }
+});
+
+export default {
+  fetch: app.fetch,
+  // Cron tiap tanggal 1 jam 00:00 WIB: buat tab untuk bulan yang baru
+  // dimulai. Kalau tab sudah ada (misal dibuat manual), tidak dibuat lagi.
+  async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
+    const { year, month } = wibYearMonth();
+    await createMonthlyTab(env, year, month);
+  },
+};

@@ -129,6 +129,47 @@ export async function readRange(env: SheetsEnv, range: string): Promise<string[]
   return data.values ?? [];
 }
 
+// Panggil spreadsheets.batchUpdate dengan daftar request mentah
+// (insertDimension, addSheet, repeatCell, dan lain-lain).
+export async function batchUpdateSheets(
+  env: SheetsEnv,
+  requests: unknown[],
+): Promise<{ replies?: { addSheet?: { properties?: { sheetId?: number } } }[] }> {
+  return (await sheetsFetch(env, ':batchUpdate', {
+    method: 'POST',
+    body: JSON.stringify({ requests }),
+  })) as { replies?: { addSheet?: { properties?: { sheetId?: number } } }[] };
+}
+
+// Tulis nilai ke satu range A1. valueInputOption USER_ENTERED membuat
+// Sheets mengurai isi seperti diketik di UI (rumus jadi rumus, tanggal
+// jadi tanggal); RAW menyimpan persis seperti dikirim.
+export async function updateValues(
+  env: SheetsEnv,
+  range: string,
+  values: (string | number)[][],
+  valueInputOption: 'RAW' | 'USER_ENTERED',
+): Promise<void> {
+  await sheetsFetch(
+    env,
+    `/values/${encodeURIComponent(range)}?valueInputOption=${valueInputOption}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ values }),
+    },
+  );
+}
+
+// Daftar judul semua tab di spreadsheet (untuk cek duplikat sebelum
+// membuat tab bulanan baru).
+export async function getSheetTitles(env: SheetsEnv): Promise<string[]> {
+  const data = (await sheetsFetch(
+    env,
+    '?fields=sheets.properties.title',
+  )) as { sheets?: { properties?: { title?: string } }[] };
+  return (data.sheets ?? []).map((s) => s.properties?.title ?? '');
+}
+
 // Tambah baris di akhir tab. valueInputOption RAW: nilai disimpan
 // persis seperti dikirim (timestamp ISO tetap teks, tidak diubah Sheets).
 // Mengembalikan range baris yang ditulis, misal "'Log Transaksi'!A73:H73".
