@@ -211,18 +211,19 @@ Hadir hijau, Telat oranye, Izin/Cuti biru.
    2 foto selfie kamera depan, preview dengan tombol "Ini Foto
    Saya" / "Foto Ulang". Berlaku untuk Absen Masuk dan Absen
    Pulang. Pesan error Bahasa Indonesia sederhana, tanpa istilah
-   teknis. Selfie disimpan sebagai data URL JPEG yang diperkecil
-   (maks 640px), supaya fotonya tetap tampil setelah halaman
-   di-refresh (object URL mati saat refresh).
+   teknis. Selfie diperkecil dulu (maks 640px, JPEG 0.82) lalu
+   di-upload ke server (database D1, tabel photos), supaya Bos bisa
+   melihat foto absen dari HP-nya sendiri dan foto tetap tampil
+   setelah halaman di-refresh. Catatan absen, selfie, dan bukti
+   kerja semuanya tersimpan di server, bukan di HP masing-masing:
+   backend adalah sumber kebenaran, localStorage hanya cache
+   status hari ini untuk akun yang sedang masuk.
    **Persetujuan absensi:** tiap catatan absen berstatus pending,
    approved, atau rejected. Check-in baru dan pengajuan Izin/Cuti
    baru berstatus pending. Bos menyetujui/menolak dari antrean di
    halaman Absensi (atau dari kartu karyawan). Rekap dan laporan
    hanya menghitung yang approved; yang rejected tidak dihitung dan
-   karyawannya kembali ke "Belum absen" (harus absen ulang). Status
-   absen saya disimpan per akun (kunci localStorage memakai email),
-   bukan per perangkat, supaya ganti akun tidak saling menukar
-   status absen.
+   karyawannya kembali ke "Belum absen" (harus absen ulang).
 4. **Karyawan** (Admin saja) - daftar karyawan, tambah/
    ubah/hapus. Peran lain dialihkan ke Beranda kalau membuka rute ini.
 5. **Laporan** (Admin/Bos/Manager) - rentang tanggal, unduh CSV,

@@ -1,149 +1,78 @@
 // State absensi yang dipakai bersama Beranda, halaman Absensi, dan
 // Laporan: catatan absen, jam absen masuk/pulang saya, bukti kerja,
 // dan bukti verifikasi (lokasi GPS + selfie) tiap karyawan.
-// Penyimpanan sementara (belum ada backend):
-// - Status absen saya hari ini: localStorage PER AKUN (kunci memakai
-//   email), supaya ganti akun di perangkat yang sama tidak saling
-//   menukar status absen. Hanya berlaku untuk tanggal hari ini.
-// - Catatan absen (termasuk status persetujuan Bos) dan verifikasi
-//   selfie: localStorage, supaya tidak hilang kalau halaman
-//   di-refresh. Catatan lama (sebelum bulan ini) dibuang saat dimuat.
-// - Bukti kerja masih di memori saja: filenya belum bisa disimpan.
-// Nanti data ini tinggal di Workers + D1, file di-upload ke R2.
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+//
+// Sumber data: Worker + D1 lewat attendance-api (kalau VITE_API_URL
+// diisi), atau localStorage perangkat (mode dev tanpa backend).
+// Server adalah sumber kebenaran: setelah tiap perubahan (absen,
+// persetujuan, pengajuan, bukti), bulan yang berubah dibaca ulang
+// dari server, jadi semua HP melihat data yang sama. Bos melihat
+// selfie Budi dari HP-nya sendiri; Manager melihat laporan dari
+// HP-nya. localStorage hanya dipakai untuk status absen Admin dan
+// Manager (mereka belum ada di daftar karyawan, jadi absen mereka
+// tidak membuat catatan di server).
+//
+// Jam kerja fleksibel: tidak ada konsep Telat dan tidak ada jam
+// masuk tetap. Status absen hanya Hadir, Izin, atau Cuti.
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useAuth } from './auth';
+import { attendanceApi } from './attendance-api';
 import {
-  LATE_CUTOFF,
-  OFFICE_LOCATION,
-  USERS,
-  getAttendance,
-  haversineDistanceMeters,
   jakartaDate,
   jakartaTime,
 } from './attendance';
-import type { ApprovalStatus, AttendanceRecord, CheckVerification, EvidenceFile } from './attendance';
-
-export interface EmployeeVerification {
-  masuk?: CheckVerification;
-  pulang?: CheckVerification;
-}
+import type {
+  ApprovalStatus,
+  AttendanceRecord,
+  CheckVerification,
+  EmployeeVerification,
+  EvidenceFile,
+} from './attendance';
 
 interface AttendanceStateValue {
   records: AttendanceRecord[];
-  upsertRecord: (rec: AttendanceRecord) => void;
-  setApproval: (employeeId: number, date: string, approval: ApprovalStatus) => void;
+  requestLeave: (employeeId: number, date: string, type: 'Izin' | 'Cuti') => Promise<boolean>;
+  setApproval: (employeeId: number, date: string, approval: ApprovalStatus) => Promise<boolean>;
   myCheckIn: string | null;
   myCheckOut: string | null;
-  myStatus: 'Hadir' | 'Telat' | null;
-  checkIn: (v: CheckVerification, employeeId: number | null) => void;
-  checkOut: (v: CheckVerification, employeeId: number | null) => void;
+  myStatus: 'Hadir' | null;
+  checkIn: (v: CheckVerification, employeeId: number | null) => Promise<boolean>;
+  checkOut: (v: CheckVerification, employeeId: number | null) => Promise<boolean>;
   evidenceByEmployee: Record<number, EvidenceFile[]>;
-  verificationByEmployee: Record<number, EmployeeVerification>;
-  addEvidence: (employeeId: number, files: File[]) => void;
-  removeEvidence: (employeeId: number, fileId: string) => void;
+  verificationByRecord: Record<string, EmployeeVerification>;
+  addEvidence: (employeeId: number, files: File[]) => Promise<boolean>;
+  removeEvidence: (employeeId: number, fileId: string) => Promise<boolean>;
+  loading: boolean;
+  error: string | null;
+  clearError: () => void;
+  ensureMonth: (monthKey: string) => Promise<void>;
+  refresh: () => Promise<void>;
 }
 
 const AttendanceStateContext = createContext<AttendanceStateValue | null>(null);
 
 // Akun staf (Budi Santoso) adalah satu-satunya akun yang terikat ke
-// karyawan di daftar absensi (id 1). Dipakai saat Bos menolak absen:
-// status absen tersimpan staf itu dihapus supaya dia bisa absen ulang.
+// karyawan di daftar absensi (id 1).
 const STAFF_EMPLOYEE_ID = 1;
-const STAFF_EMAIL = USERS.find((u) => u.role === 'Staff')?.email ?? 'staff@sabunpalem.co.id';
 
-// Thumbnail untuk file gambar yang sudah ada: digambar di canvas
-// (latar teal + nama file), jadi Bos/Manager bisa melihat wujudnya
-// tanpa file asli. File yang di-upload staf pakai object URL asli.
-function makeThumb(label: string): string {
-  const canvas = document.createElement('canvas');
-  canvas.width = 320;
-  canvas.height = 200;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return '';
-  ctx.fillStyle = '#0F6F72';
-  ctx.fillRect(0, 0, 320, 200);
-  ctx.fillStyle = '#B2EBEC';
-  ctx.fillRect(0, 150, 320, 50);
-  ctx.fillStyle = '#FFFFFF';
-  ctx.font = 'bold 20px sans-serif';
-  ctx.textAlign = 'center';
-  const words = label.split(' ');
-  const lines: string[] = [];
-  let line = '';
-  for (const w of words) {
-    if ((line + ' ' + w).trim().length > 22) {
-      lines.push(line.trim());
-      line = w;
-    } else {
-      line = (line + ' ' + w).trim();
-    }
-  }
-  if (line) lines.push(line);
-  lines.slice(0, 3).forEach((l, i) => {
-    ctx.fillText(l, 160, 80 + i * 28);
-  });
-  ctx.fillStyle = '#0F6F72';
-  ctx.font = 'bold 16px sans-serif';
-  ctx.fillText('Sabun Palem', 160, 182);
-  return canvas.toDataURL('image/png');
-}
-
-// Bukti kerja yang sudah dilampirkan karyawan lain hari ini.
-function seedEvidence(): Record<number, EvidenceFile[]> {
-  return {
-    2: [
-      { id: 'ev-1', name: 'foto-admin.jpg', kind: 'image', sizeLabel: '1,5 MB', url: makeThumb('foto admin') },
-    ],
-  };
-}
-
-// Verifikasi absen masuk yang sudah tercatat hari ini (Maya, 08:26).
-// Koordinatnya di dalam area pabrik, beberapa meter dari kantor.
-function seedVerification(): Record<number, EmployeeVerification> {
-  const lat = -6.93795;
-  const lon = 107.5992;
-  return {
-    2: {
-      masuk: {
-        lat,
-        lon,
-        distanceMeters: Math.round(haversineDistanceMeters(lat, lon, OFFICE_LOCATION.lat, OFFICE_LOCATION.lon)),
-        selfieUrl: makeThumb('selfie Maya Putri'),
-        selfieName: 'selfie-maya.jpg',
-        time: '08:26',
-      },
-    },
-  };
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`;
-}
-
-let evidenceCounter = 100;
-
-// --- Status absen saya hari ini: satu kunci per akun. ---
-// Kunci lama (satu kunci untuk semua akun di perangkat) pernah bikin
-// status absen Budi muncul di kartu "Absen saya" akun lain. Kunci
-// lama dihapus sekali saat provider pertama dimuat.
-const LEGACY_CHECKIN_KEY = 'sabunpalem-absen-hari-ini';
+// --- Status absen Admin/Manager hari ini (tanpa catatan server). ---
+// Kunci per akun, supaya ganti akun di perangkat yang sama tidak
+// saling menukar status absen. Hanya berlaku untuk tanggal hari ini.
+const CHECKIN_KEY_PREFIX = 'sabunpalem-absen-hari-ini';
 
 function checkInKeyFor(email: string | null | undefined): string | null {
-  return email ? `${LEGACY_CHECKIN_KEY}-${email}` : null;
+  return email ? `${CHECKIN_KEY_PREFIX}-${email}` : null;
 }
 
 interface SavedCheckIn {
   date: string;
   checkIn: string | null;
   checkOut: string | null;
-  status: 'Hadir' | 'Telat' | null;
 }
 
 function loadCheckIn(key: string | null): SavedCheckIn {
-  const empty: SavedCheckIn = { date: '', checkIn: null, checkOut: null, status: null };
+  const empty: SavedCheckIn = { date: '', checkIn: null, checkOut: null };
   if (!key) return empty;
   try {
     const raw = localStorage.getItem(key);
@@ -165,69 +94,29 @@ function saveCheckIn(key: string | null, saved: SavedCheckIn) {
   }
 }
 
-// --- Catatan absen: disimpan supaya persetujuan Bos dan absen yang
-// sudah dicatat tidak hilang kalau halaman di-refresh. ---
-const RECORDS_KEY = 'sabunpalem-absensi';
-
-function loadRecords(): AttendanceRecord[] {
-  const seed = getAttendance();
-  try {
-    const raw = localStorage.getItem(RECORDS_KEY);
-    if (!raw) return seed;
-    const parsed = JSON.parse(raw) as { records?: AttendanceRecord[] };
-    const monthStart = `${jakartaDate(0).slice(0, 7)}-01`;
-    const saved = (parsed.records ?? []).filter((r) => r.date >= monthStart);
-    const merged = [...saved];
-    for (const s of seed) {
-      if (!merged.some((r) => r.employeeId === s.employeeId && r.date === s.date)) {
-        merged.push(s);
-      }
-    }
-    return merged;
-  } catch {
-    return seed;
-  }
-}
-
-// --- Verifikasi absen (GPS + selfie): disimpan supaya fotonya tetap
-// tampil setelah halaman di-refresh. Hanya untuk tanggal hari ini. ---
-const VERIF_KEY = 'sabunpalem-verifikasi-hari-ini';
-
-function loadVerification(): Record<number, EmployeeVerification> {
-  const seed = seedVerification();
-  try {
-    const raw = localStorage.getItem(VERIF_KEY);
-    if (!raw) return seed;
-    const parsed = JSON.parse(raw) as { date?: string; byEmployee?: Record<number, EmployeeVerification> };
-    if (parsed.date !== jakartaDate(0)) return seed;
-    return { ...seed, ...(parsed.byEmployee ?? {}) };
-  } catch {
-    return seed;
-  }
-}
-
-function saveVerification(byEmployee: Record<number, EmployeeVerification>) {
-  try {
-    localStorage.setItem(VERIF_KEY, JSON.stringify({ date: jakartaDate(0), byEmployee }));
-  } catch {
-    // localStorage penuh: abaikan, foto di memori tetap tampil sesi ini.
-  }
+function monthRange(monthKey: string): { from: string; to: string } {
+  const [year, month] = monthKey.split('-').map(Number);
+  const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return { from: `${monthKey}-01`, to: `${monthKey}-${String(days).padStart(2, '0')}` };
 }
 
 export function AttendanceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const userEmail = user?.email ?? null;
+  const isStaffAccount = user?.role === 'Staff';
 
   const [saved, setSaved] = useState<SavedCheckIn>(() => loadCheckIn(checkInKeyFor(userEmail)));
-  const [records, setRecords] = useState<AttendanceRecord[]>(loadRecords);
-  const [evidenceByEmployee, setEvidenceByEmployee] = useState<Record<number, EvidenceFile[]>>(seedEvidence);
-  const [verificationByEmployee, setVerificationByEmployee] =
-    useState<Record<number, EmployeeVerification>>(loadVerification);
+  const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [evidenceByEmployee, setEvidenceByEmployee] = useState<Record<number, EvidenceFile[]>>({});
+  const [verificationByRecord, setVerificationByRecord] = useState<Record<string, EmployeeVerification>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const loadedMonths = useRef<Set<string>>(new Set());
 
   // Hapus kunci lama (satu kunci untuk semua akun) sekali saja.
   useEffect(() => {
     try {
-      localStorage.removeItem(LEGACY_CHECKIN_KEY);
+      localStorage.removeItem(CHECKIN_KEY_PREFIX);
     } catch {
       // abaikan
     }
@@ -239,149 +128,209 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     setSaved(loadCheckIn(checkInKeyFor(userEmail)));
   }, [userEmail]);
 
-  // Simpan catatan absen setiap kali berubah (persetujuan Bos ikut
-  // tersimpan, jadi tidak kembali pending setelah refresh).
-  useEffect(() => {
-    try {
-      localStorage.setItem(RECORDS_KEY, JSON.stringify({ records }));
-    } catch {
-      // abaikan, state memori tetap jalan
-    }
-  }, [records]);
+  const clearError = useCallback(() => setError(null), []);
 
-  const myCheckIn = saved.checkIn;
-  const myCheckOut = saved.checkOut;
-  const myStatus = saved.status;
-
-  const upsertRecord = useCallback((rec: AttendanceRecord) => {
+  // Baca satu bulan dari sumber data, gabungkan ke state (catatan
+  // bulan itu diganti seluruhnya dengan data server terbaru).
+  const refreshMonth = useCallback(async (monthKey: string) => {
+    const { from, to } = monthRange(monthKey);
+    const bundle = await attendanceApi.list(from, to);
     setRecords((prev) => {
-      const exists = prev.some((r) => r.employeeId === rec.employeeId && r.date === rec.date);
-      if (exists) {
-        return prev.map((r) =>
-          r.employeeId === rec.employeeId && r.date === rec.date ? { ...r, ...rec } : r,
-        );
-      }
-      return [...prev, rec];
+      const others = prev.filter((r) => !r.date.startsWith(monthKey));
+      return [...others, ...bundle.records];
     });
+    setVerificationByRecord((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        if (key.split(':')[1]?.startsWith(monthKey)) {
+          delete next[key];
+        }
+      }
+      return { ...next, ...bundle.verificationByRecord };
+    });
+    setEvidenceByEmployee((prev) => {
+      const next: Record<number, EvidenceFile[]> = {};
+      for (const [id, list] of Object.entries(prev)) {
+        const kept = list.filter((f) => !f.date?.startsWith(monthKey));
+        if (kept.length > 0) next[Number(id)] = kept;
+      }
+      for (const [id, list] of Object.entries(bundle.evidenceByEmployee)) {
+        next[Number(id)] = [...(next[Number(id)] ?? []), ...list];
+      }
+      return next;
+    });
+    loadedMonths.current.add(monthKey);
   }, []);
 
-  // Persetujuan Bos: ubah status persetujuan satu catatan. Kalau absen
-  // HARI INI ditolak, status absen tersimpan staf itu dihapus supaya
-  // dia bisa absen ulang (absen ulang membuat catatan pending baru).
-  // Penolakan untuk tanggal lain (misal pengajuan Cuti besok) tidak
-  // menyentuh status absen hari ini.
-  const setApproval = useCallback(
-    (employeeId: number, date: string, approval: ApprovalStatus) => {
-      setRecords((prev) =>
-        prev.map((r) =>
-          r.employeeId === employeeId && r.date === date ? { ...r, approval } : r,
-        ),
-      );
-      if (approval === 'rejected' && employeeId === STAFF_EMPLOYEE_ID && date === jakartaDate(0)) {
-        try {
-          localStorage.removeItem(checkInKeyFor(STAFF_EMAIL) ?? '');
-        } catch {
-          // abaikan
-        }
-        if (userEmail === STAFF_EMAIL) {
-          setSaved({ date: '', checkIn: null, checkOut: null, status: null });
-        }
+  // Muat satu bulan kalau belum dimuat (dipakai halaman Absensi dan
+  // Laporan saat pengguna pindah ke bulan lain).
+  const ensureMonth = useCallback(
+    async (monthKey: string) => {
+      if (loadedMonths.current.has(monthKey)) return;
+      try {
+        await refreshMonth(monthKey);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Gagal memuat absensi');
       }
     },
-    [userEmail],
+    [refreshMonth],
   );
 
-  // Absen masuk: catat jam + status, simpan verifikasi (GPS + selfie),
-  // dan tambahkan catatan ke daftar absensi (kalau employeeId ada).
-  // Catatan baru berstatus pending sampai Bos menyetujui. Absen ulang
-  // setelah ditolak membuat catatan pending baru.
-  // Admin/Manager tidak ada di daftar karyawan, jadi employeeId-nya
-  // null: jam absen mereka tetap tersimpan untuk akun mereka sendiri.
-  const checkIn = useCallback(
-    (v: CheckVerification, employeeId: number | null) => {
-      const time = jakartaTime();
-      const today = jakartaDate(0);
-      const status = time > LATE_CUTOFF ? 'Telat' : 'Hadir';
-      const next: SavedCheckIn = { date: today, checkIn: time, checkOut: null, status };
-      setSaved(next);
-      saveCheckIn(checkInKeyFor(userEmail), next);
-      if (employeeId !== null) {
-        upsertRecord({ employeeId, date: today, checkIn: time, checkOut: null, status, approval: 'pending' });
-        setVerificationByEmployee((prev) => {
-          const nextV = {
-            ...prev,
-            [employeeId]: { ...(prev[employeeId] ?? {}), masuk: { ...v, time } },
-          };
-          saveVerification(nextV);
-          return nextV;
-        });
+  // Muat bulan berjalan saat aplikasi dibuka.
+  useEffect(() => {
+    let cancelled = false;
+    refreshMonth(jakartaDate(0).slice(0, 7))
+      .catch((e: unknown) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Gagal memuat absensi');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshMonth]);
+
+  const refresh = useCallback(async () => {
+    try {
+      await refreshMonth(jakartaDate(0).slice(0, 7));
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gagal memuat absensi');
+    }
+  }, [refreshMonth]);
+
+  // Status absen saya hari ini. Staf membaca dari catatan server
+  // (catatan yang ditolak Bos tidak dihitung, jadi tombol absen
+  // aktif lagi untuk absen ulang). Admin/Manager membaca dari
+  // penyimpanan perangkat, karena absen mereka tidak membuat
+  // catatan di server.
+  const today = jakartaDate(0);
+  const myRecord = isStaffAccount
+    ? records.find((r) => r.employeeId === STAFF_EMPLOYEE_ID && r.date === today && r.approval !== 'rejected')
+    : undefined;
+  const myCheckIn = isStaffAccount ? (myRecord?.checkIn ?? null) : saved.checkIn;
+  const myCheckOut = isStaffAccount ? (myRecord?.checkOut ?? null) : saved.checkOut;
+  const myStatus: 'Hadir' | null = myCheckIn ? 'Hadir' : null;
+
+  const requestLeave = useCallback(
+    async (employeeId: number, date: string, type: 'Izin' | 'Cuti'): Promise<boolean> => {
+      try {
+        await attendanceApi.requestLeave(employeeId, date, type);
+        await refreshMonth(date.slice(0, 7));
+        setError(null);
+        return true;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Gagal mengirim pengajuan');
+        return false;
       }
     },
-    [upsertRecord, userEmail],
+    [refreshMonth],
+  );
+
+  const setApproval = useCallback(
+    async (employeeId: number, date: string, approval: ApprovalStatus): Promise<boolean> => {
+      try {
+        await attendanceApi.setApproval(employeeId, date, approval);
+        await refreshMonth(date.slice(0, 7));
+        setError(null);
+        return true;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Gagal mengubah persetujuan');
+        return false;
+      }
+    },
+    [refreshMonth],
+  );
+
+  // Absen masuk. Staf: catat ke server (dengan selfie), lalu baca
+  // ulang bulan ini. Admin/Manager: hanya simpan di perangkat.
+  const checkIn = useCallback(
+    async (v: CheckVerification, employeeId: number | null): Promise<boolean> => {
+      const time = v.time || jakartaTime();
+      const todayKey = jakartaDate(0);
+      if (employeeId === null) {
+        const next: SavedCheckIn = { date: todayKey, checkIn: time, checkOut: null };
+        setSaved(next);
+        saveCheckIn(checkInKeyFor(userEmail), next);
+        return true;
+      }
+      try {
+        await attendanceApi.checkIn({ employeeId, date: todayKey, verification: { ...v, time } });
+        await refreshMonth(todayKey.slice(0, 7));
+        setError(null);
+        return true;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Gagal menyimpan absen masuk');
+        return false;
+      }
+    },
+    [refreshMonth, userEmail],
   );
 
   const checkOut = useCallback(
-    (v: CheckVerification, employeeId: number | null) => {
-      const time = jakartaTime();
-      const today = jakartaDate(0);
-      const key = checkInKeyFor(userEmail);
-      setSaved((prev) => {
-        const next: SavedCheckIn = { ...prev, checkOut: time };
-        saveCheckIn(key, next);
-        return next;
-      });
-      if (employeeId !== null) {
-        setRecords((prev) =>
-          prev.map((r) =>
-            r.employeeId === employeeId && r.date === today ? { ...r, checkOut: time } : r,
-          ),
-        );
-        setVerificationByEmployee((prev) => {
-          const nextV = {
-            ...prev,
-            [employeeId]: { ...(prev[employeeId] ?? {}), pulang: { ...v, time } },
-          };
-          saveVerification(nextV);
-          return nextV;
+    async (v: CheckVerification, employeeId: number | null): Promise<boolean> => {
+      const time = v.time || jakartaTime();
+      const todayKey = jakartaDate(0);
+      if (employeeId === null) {
+        const key = checkInKeyFor(userEmail);
+        setSaved((prev) => {
+          const next: SavedCheckIn = { ...prev, checkOut: time };
+          saveCheckIn(key, next);
+          return next;
         });
+        return true;
+      }
+      try {
+        await attendanceApi.checkOut({ employeeId, date: todayKey, verification: { ...v, time } });
+        await refreshMonth(todayKey.slice(0, 7));
+        setError(null);
+        return true;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Gagal menyimpan absen pulang');
+        return false;
       }
     },
-    [userEmail],
+    [refreshMonth, userEmail],
   );
 
-  const addEvidence = useCallback((employeeId: number, files: File[]) => {
-    const next: EvidenceFile[] = files.map((f) => {
-      evidenceCounter += 1;
-      const isImage = f.type.startsWith('image/');
-      return {
-        id: `ev-${evidenceCounter}`,
-        name: f.name,
-        kind: isImage ? 'image' : 'doc',
-        sizeLabel: formatSize(f.size),
-        url: URL.createObjectURL(f),
-      };
-    });
-    setEvidenceByEmployee((prev) => ({
-      ...prev,
-      [employeeId]: [...(prev[employeeId] ?? []), ...next],
-    }));
-  }, []);
-
-  const removeEvidence = useCallback((employeeId: number, fileId: string) => {
-    setEvidenceByEmployee((prev) => {
-      const list = prev[employeeId] ?? [];
-      const target = list.find((f) => f.id === fileId);
-      if (target?.url && target.url.startsWith('blob:')) {
-        URL.revokeObjectURL(target.url);
+  const addEvidence = useCallback(
+    async (employeeId: number, files: File[]): Promise<boolean> => {
+      const todayKey = jakartaDate(0);
+      try {
+        await attendanceApi.addEvidence(employeeId, todayKey, files);
+        await refreshMonth(todayKey.slice(0, 7));
+        setError(null);
+        return true;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Gagal melampirkan bukti kerja');
+        return false;
       }
-      return { ...prev, [employeeId]: list.filter((f) => f.id !== fileId) };
-    });
-  }, []);
+    },
+    [refreshMonth],
+  );
+
+  const removeEvidence = useCallback(
+    async (employeeId: number, fileId: string): Promise<boolean> => {
+      void employeeId;
+      const todayKey = jakartaDate(0);
+      try {
+        await attendanceApi.removeEvidence(employeeId, fileId);
+        await refreshMonth(todayKey.slice(0, 7));
+        setError(null);
+        return true;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Gagal menghapus bukti kerja');
+        return false;
+      }
+    },
+    [refreshMonth],
+  );
 
   const value = useMemo(
     () => ({
       records,
-      upsertRecord,
+      requestLeave,
       setApproval,
       myCheckIn,
       myCheckOut,
@@ -389,13 +338,18 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       checkIn,
       checkOut,
       evidenceByEmployee,
-      verificationByEmployee,
+      verificationByRecord,
       addEvidence,
       removeEvidence,
+      loading,
+      error,
+      clearError,
+      ensureMonth,
+      refresh,
     }),
     [
       records,
-      upsertRecord,
+      requestLeave,
       setApproval,
       myCheckIn,
       myCheckOut,
@@ -403,9 +357,14 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       checkIn,
       checkOut,
       evidenceByEmployee,
-      verificationByEmployee,
+      verificationByRecord,
       addEvidence,
       removeEvidence,
+      loading,
+      error,
+      clearError,
+      ensureMonth,
+      refresh,
     ],
   );
 

@@ -3,7 +3,7 @@
 // muncul duluan. Bisa diunduh sebagai CSV untuk dibuka di Excel.
 // Hanya catatan yang sudah disetujui Bos yang dihitung; yang pending
 // ditampilkan terpisah, yang ditolak tidak dihitung.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { EMPLOYEES, formatDateID, jakartaDate } from '../lib/attendance';
 import { useAttendanceState } from '../lib/attendance-state';
 import { BigButton, PageHeader } from '../components/ui';
@@ -11,7 +11,14 @@ import { BigButton, PageHeader } from '../components/ui';
 export default function Reports() {
   const [from, setFrom] = useState(jakartaDate(0));
   const [to, setTo] = useState(jakartaDate(0));
-  const { records } = useAttendanceState();
+  const { records, ensureMonth } = useAttendanceState();
+
+  // Rentang bisa melewati bulan berjalan: muat bulan awal dan bulan
+  // akhir dari server supaya laporannya lengkap.
+  useEffect(() => {
+    void ensureMonth(from.slice(0, 7));
+    if (to.slice(0, 7) !== from.slice(0, 7)) void ensureMonth(to.slice(0, 7));
+  }, [from, to, ensureMonth]);
 
   const filtered = useMemo(
     () => records.filter((r) => r.date >= from && r.date <= to),

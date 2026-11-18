@@ -5,15 +5,17 @@
 //   jalan pintas.
 // - Selfie: input file dengan capture="user" membuka kamera depan
 //   langsung di HP. Foto dicek dulu di preview sebelum dikonfirmasi.
-//   Foto disimpan sebagai data URL JPEG yang diperkecil (maks 640px),
-//   BUKAN object URL: object URL mati begitu halaman di-refresh, dan
-//   cleanup unmount dulu sempat mencabut URL yang baru disimpan,
-//   sehingga foto selfie tampil rusak di halaman Absensi.
+//   Foto diperkecil dulu (maks 640px, JPEG 0.82) sebelum di-upload
+//   ke server, supaya tidak memenuhi database. Kalau penyimpanan
+//   gagal (misal internet putus), pesan error tampil di langkah
+//   preview dan pengguna bisa mengetuk lagi tanpa foto ulang.
 // Ditampilkan sebagai overlay layar penuh (portal ke body), karena
 // wrapper halaman punya transform animasi yang merusak position:fixed.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { BigButton } from './ui';
+import { fileToDataUrl } from '../lib/photo';
+import { useAttendanceState } from '../lib/attendance-state';
 import {
   GEOFENCE_RADIUS_METERS,
   OFFICE_LOCATION,
@@ -50,52 +52,13 @@ function getPosition(): Promise<GeolocationPosition> {
   });
 }
 
-// Ubah file foto jadi data URL JPEG yang diperkecil (sisi terpanjang
-// maks 640px, kualitas 0.82), supaya muat disimpan di localStorage.
-// Foto kamera HP asli bisa beberapa MB; tanpa diperkecil, localStorage
-// (kuota sekitar 5 MB) bisa penuh hanya oleh satu foto. Kalau gambar
-// gagal dibaca atau digambar, fallback ke data URL asli dari FileReader.
-function fileToDataUrl(file: File): Promise<string> {
-  const readRaw = () =>
-    new Promise<string>((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
-      reader.onerror = () => resolve('');
-      reader.readAsDataURL(file);
-    });
-  if (!file.type.startsWith('image/')) return readRaw();
-  return new Promise((resolve) => {
-    const tempUrl = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(tempUrl);
-      const MAX = 640;
-      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
-      const w = Math.max(1, Math.round(img.width * scale));
-      const h = Math.max(1, Math.round(img.height * scale));
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        void readRaw().then(resolve);
-        return;
-      }
-      ctx.drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', 0.82));
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(tempUrl);
-      void readRaw().then(resolve);
-    };
-    img.src = tempUrl;
-  });
-}
-
 export default function CheckInFlow({ type, onComplete, onCancel }: Props) {
   const [step, setStep] = useState<Step>({ kind: 'locating' });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const title = type === 'masuk' ? 'Absen Masuk' : 'Absen Pulang';
+  // Pesan error dari penyimpanan absen (misal internet putus):
+  // tampil di langkah preview supaya pengguna bisa coba lagi.
+  const { error: saveError } = useAttendanceState();
 
   const checkLocation = useCallback(() => {
     setStep({ kind: 'locating' });
@@ -286,6 +249,11 @@ export default function CheckInFlow({ type, onComplete, onCancel }: Props) {
             <p className="mt-4 text-center text-lg text-ink">
               Apakah foto ini sudah benar?
             </p>
+            {saveError ? (
+              <p className="mt-4 rounded-button bg-error/10 px-4 py-3 text-center text-base font-bold text-error">
+                {saveError} Periksa koneksi internet, lalu ketuk lagi.
+              </p>
+            ) : null}
             <div className="mt-6 space-y-3">
               <BigButton tone="primary" full onClick={handleConfirm}>
                 Ini Foto Saya
