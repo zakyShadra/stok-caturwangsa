@@ -2,6 +2,16 @@ name = "stok-sabun-palem"
 main = "src/index.ts"
 compatibility_date = "2025-11-01"
 
+# Domain custom untuk API: api.ices.my.id (bukan workers.dev).
+# Alasan: ISP XL memblokir *.workers.dev di level DNS (19 Nov 2026,
+# resolve ke blockpage.xlaxiata.id), sehingga aplikasi tidak bisa
+# mencapai API dari HP staff. Domain ini tinggal di zona ices.my.id
+# (akun Cloudflare Zaky); saat migrasi ke akun perusahaan, daftarkan
+# ulang domain ini (atau domain perusahaan) ke Worker yang baru,
+# lihat docs/migrasi-akun.md. URL workers.dev tetap aktif sebagai
+# alamat langsung Worker, tapi aplikasi memakai domain ini.
+routes = [{ pattern = "api.ices.my.id", custom_domain = true }]
+
 # ID sheet TIDAK sensitif (hanya pengenal), jadi disimpan sebagai var
 # biasa di sini. Yang rahasia (email + private key service account)
 # TIDAK BOLEH masuk file ini; keduanya disimpan sebagai Worker secrets:
