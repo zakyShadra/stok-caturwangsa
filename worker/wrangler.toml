@@ -11,6 +11,11 @@ compatibility_date = "2025-11-01"
 [vars]
 SHEET_ID = "1SRXE0Ma1VXO_W1DJJ1GISM0Tmcnbr9w8eGyBrQj2IhA"
 ALLOWED_ORIGINS = "https://zakyshadra.github.io,https://caturwangsa.ices.my.id,https://caturwangsa.pages.dev,http://localhost:5173"
+# Folder Drive tujuan arsip foto absen ("Arsip Foto Absensi Sabun
+# Palem"). ID folder TIDAK sensitif (hanya pengenal), seperti
+# SHEET_ID. Saat migrasi ke akun perusahaan, ganti dengan ID folder
+# baru di Drive perusahaan (lihat docs/migrasi-akun.md).
+ARCHIVE_DRIVE_FOLDER_ID = "1tIFFDXOKMLoHBNkDz_Mcw7m-JW1VreUx"
 
 # Cron tiap tanggal 1 jam 00:00 WIB (17:00 UTC hari sebelumnya):
 # membuat tab bulanan baru di Sheet untuk bulan yang baru dimulai.

@@ -15,12 +15,14 @@ export interface SheetsEnv {
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
-const SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
+const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
 
 // Cache token di memori isolate supaya tidak minta token baru di setiap
-// request. Token berlaku 1 jam; diperbarui saat tersisa kurang dari 1 menit.
-let cachedToken: string | null = null;
-let cachedExpiry = 0;
+// request, per scope (Sheets dan Drive memakai token berbeda). Token
+// berlaku 1 jam; diperbarui saat tersisa kurang dari 1 menit.
+const tokenCache = new Map<string, { token: string; expiry: number }>();
+
+export type GoogleAuthEnv = Pick<SheetsEnv, 'SHEETS_CLIENT_EMAIL' | 'SHEETS_PRIVATE_KEY'>;
 
 function base64urlEncode(bytes: ArrayBuffer | Uint8Array): string {
   const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -47,9 +49,12 @@ function pemToPkcs8(pem: string): Uint8Array {
   return base64DecodeToBytes(body);
 }
 
-async function getAccessToken(env: SheetsEnv): Promise<string> {
+// Minta access token OAuth 2.0 untuk satu scope, dari service account.
+// Dipakai Sheets (sheetsFetch di bawah) dan Drive (drive.ts).
+export async function getAccessToken(env: GoogleAuthEnv, scope: string): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  if (cachedToken && cachedExpiry > now + 60) return cachedToken;
+  const cached = tokenCache.get(scope);
+  if (cached && cached.expiry > now + 60) return cached.token;
 
   const keyData = pemToPkcs8(env.SHEETS_PRIVATE_KEY);
   const key = await crypto.subtle.importKey(
@@ -67,7 +72,7 @@ async function getAccessToken(env: SheetsEnv): Promise<string> {
     new TextEncoder().encode(
       JSON.stringify({
         iss: env.SHEETS_CLIENT_EMAIL,
-        scope: SCOPE,
+        scope,
         aud: TOKEN_URL,
         iat: now,
         exp: now + 3600,
@@ -93,9 +98,8 @@ async function getAccessToken(env: SheetsEnv): Promise<string> {
     throw new Error(`Gagal minta access token Google (${res.status})`);
   }
   const data = (await res.json()) as { access_token: string; expires_in: number };
-  cachedToken = data.access_token;
-  cachedExpiry = now + data.expires_in;
-  return cachedToken;
+  tokenCache.set(scope, { token: data.access_token, expiry: now + data.expires_in });
+  return data.access_token;
 }
 
 async function sheetsFetch(
@@ -104,7 +108,7 @@ async function sheetsFetch(
   init?: RequestInit,
   spreadsheetId?: string,
 ): Promise<unknown> {
-  const token = await getAccessToken(env);
+  const token = await getAccessToken(env, SHEETS_SCOPE);
   const id = spreadsheetId ?? env.SHEET_ID;
   const res = await fetch(`${SHEETS_BASE}/${id}${path}`, {
     ...init,
