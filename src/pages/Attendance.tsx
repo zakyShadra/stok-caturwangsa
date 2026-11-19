@@ -257,13 +257,16 @@ export default function Attendance() {
   // karyawan yang bisa upload bukti yang dihitung (Admin/Manager
   // tidak punya tombol upload, lihat canUploadEvidence).
   const presentToday = dayRecords.filter(
-    (r) => r.status === 'Hadir' && r.approval === 'approved' && canUploadEvidence(r.employeeId),
+    (r) => r.status === 'Hadir' && r.approval === 'approved' && canUploadEvidence(r.employeeId, employees),
   );
   const withEvidenceToday = presentToday.filter(
     (r) => (evidenceByEmployee[r.employeeId] ?? []).some((f) => f.date === selectedDate),
   ).length;
 
   const myEvidence = (evidenceByEmployee[myId] ?? []).filter((f) => f.date === jakartaDate(0));
+  // Bukti hari ini sudah dicek Manager: tombol hapus disembunyikan
+  // (server juga menolak hapusnya).
+  const myEvidenceReviewed = Boolean(reviewsByRecord[verificationKey(myId, jakartaDate(0))]);
 
   const handleRequest = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -367,7 +370,7 @@ export default function Attendance() {
                       key={f.id}
                       file={f}
                       onView={() => viewFile(f)}
-                      onRemove={() => removeEvidence(myId, f.id)}
+                      onRemove={myEvidenceReviewed ? undefined : () => removeEvidence(myId, f.id)}
                     />
                   ))}
                 </div>
@@ -437,9 +440,12 @@ export default function Attendance() {
           </p>
           <div className="mt-4 space-y-3">
             {pending.map((r) => {
-              const v = verificationByRecord[verificationKey(r.employeeId, r.date)]?.masuk;
+              const v = verificationByRecord[verificationKey(r.employeeId, r.date)];
               const isLeave = r.status === 'Izin' || r.status === 'Cuti';
               const isSusulan = isLeave && r.date < jakartaDate(0);
+              const verItems: { label: string; data: CheckVerification }[] = [];
+              if (v?.masuk) verItems.push({ label: 'Masuk', data: v.masuk });
+              if (v?.pulang) verItems.push({ label: 'Pulang', data: v.pulang });
               return (
                 <article
                   key={`${r.employeeId}-${r.date}`}
@@ -467,14 +473,17 @@ export default function Attendance() {
                       {r.checkOut ? `, pulang ${r.checkOut}` : ''}
                     </p>
                   )}
-                  {!isLeave && v ? (
-                    <div className="mt-3">
-                      <VerificationRow
-                        label="Masuk"
-                        data={v}
-                        employeeName={employeeName(r.employeeId)}
-                        onView={viewLightbox}
-                      />
+                  {!isLeave && verItems.length > 0 ? (
+                    <div className="mt-3 space-y-2">
+                      {verItems.map(({ label, data }) => (
+                        <VerificationRow
+                          key={label}
+                          label={label}
+                          data={data}
+                          employeeName={employeeName(r.employeeId)}
+                          onView={viewLightbox}
+                        />
+                      ))}
                     </div>
                   ) : null}
                   {isBos ? (

@@ -145,13 +145,15 @@ export function canViewMarketing(user: User | null, employees: Employee[]): bool
   return hasCapability(user.employeeId, 'view-marketing', employees);
 }
 
-// Karyawan yang bisa melampirkan bukti kerja: hanya karyawan yang
-// punya akun Staff. Admin/Manager tidak punya tombol upload bukti,
-// jadi mereka tidak dihitung di penghitung bukti kerja ("X dari Y
-// yang hadir sudah melampirkan bukti"); kalau dihitung, angkanya
-// selalu terlihat kurang padahal mereka memang tidak bisa upload.
-export function canUploadEvidence(employeeId: number): boolean {
-  return USERS.some((u) => u.role === 'Staff' && u.employeeId === employeeId);
+// Karyawan yang bisa melampirkan bukti kerja: yang jabatannya Staff
+// (dari data karyawan server). Admin/Manager tidak punya tombol
+// upload bukti, jadi mereka tidak dihitung di penghitung bukti kerja
+// ("X dari Y yang hadir sudah melampirkan bukti"); kalau dihitung,
+// angkanya selalu terlihat kurang padahal mereka memang tidak bisa
+// upload. Jangan pakai daftar login USERS: karyawan Staff yang belum
+// punya akun login tetap bisa upload.
+export function canUploadEvidence(employeeId: number, employees: Employee[]): boolean {
+  return employees.find((e) => e.id === employeeId)?.position.startsWith('Staff') ?? false;
 }
 
 // Tidak ada batas jam masuk: jam kerja fleksibel (flex time), jadi

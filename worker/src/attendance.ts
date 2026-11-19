@@ -715,10 +715,19 @@ attendanceRoutes.delete('/evidence/:id', async (c) => {
   const db = c.env.sabun_palem_absen;
   try {
     const row = await db
-      .prepare('SELECT photo_key FROM evidence WHERE id = ?')
+      .prepare('SELECT employee_id, date, photo_key FROM evidence WHERE id = ?')
       .bind(id)
-      .first<{ photo_key: string }>();
+      .first<{ employee_id: number; date: string; photo_key: string }>();
     if (!row) return jsonError(c, 404, 'Bukti tidak ditemukan');
+    // Bukti yang sudah ditandai Manager tidak bisa dihapus: jejak
+    // pemeriksaannya harus tetap ada.
+    const review = await db
+      .prepare('SELECT employee_id FROM evidence_reviews WHERE employee_id = ? AND date = ?')
+      .bind(row.employee_id, row.date)
+      .first<{ employee_id: number }>();
+    if (review) {
+      return jsonError(c, 400, 'Bukti sudah dicek Manager, tidak bisa dihapus');
+    }
     await db.prepare('DELETE FROM evidence WHERE id = ?').bind(id).run();
     await db.prepare('DELETE FROM photos WHERE key = ?').bind(row.photo_key).run();
     return c.json({ ok: true });

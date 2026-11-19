@@ -191,7 +191,7 @@ export default function Home() {
   // Hanya karyawan yang bisa upload bukti yang dihitung (Admin/Manager
   // tidak punya tombol upload, lihat canUploadEvidence).
   const presentIds = approvedToday
-    .filter((r) => r.status === 'Hadir' && canUploadEvidence(r.employeeId))
+    .filter((r) => r.status === 'Hadir' && canUploadEvidence(r.employeeId, employees))
     .map((r) => r.employeeId);
   const withEvidence = presentIds.filter((id) =>
     (evidenceByEmployee[id] ?? []).some((f) => f.date === today),
