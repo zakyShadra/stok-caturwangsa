@@ -1,14 +1,18 @@
 -- Skema absensi Sabun Palem (D1 database sabun-palem-absen).
 -- Terapkan: wrangler d1 execute sabun-palem-absen --remote --file=schema.sql
 --
--- Foto disimpan di tabel photos (base64) untuk sementara: R2 belum
--- bisa dipakai karena mengaktifkannya butuh detail pembayaran di
--- dashboard Cloudflare (di luar wewenang agent). Foto sudah
--- diperkecil di sisi aplikasi (maks 640px, JPEG 0.82, sekitar
--- 30-100 KB per foto), jadi satu database D1 cukup untuk
--- bertahun-tahun pemakaian 7 karyawan. Saat R2 aktif nanti, yang
--- berubah hanya isi tabel photos (pindah ke bucket R2); endpoint
--- /api/absen/foto/:key dan format respons tidak berubah.
+-- Foto disimpan di tabel photos (base64): R2 belum bisa dipakai
+-- karena mengaktifkannya butuh detail pembayaran di dashboard
+-- Cloudflare (di luar wewenang agent). Foto sudah diperkecil di
+-- sisi aplikasi (maks 640px, JPEG 0.82, sekitar 30-100 KB per
+-- foto). D1 free tier dibatasi 500 MB per database, jadi foto TIDAK
+-- disimpan selamanya: cron harian mengarsipkan foto lebih tua dari
+-- 2 bulan ke Google Drive (folder "Arsip Foto Absensi Sabun
+-- Palem"), lalu menghapusnya dari D1 setelah upload terverifikasi
+-- dan manifest tertulis di tabel photo_archive (lihat
+-- worker/src/archive.ts). Catatan absennya tetap ada; UI
+-- menampilkan "Foto sudah diarsipkan ke Drive" untuk foto yang
+-- sudah pindah.
 CREATE TABLE IF NOT EXISTS attendance (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   employee_id INTEGER NOT NULL,
@@ -90,4 +94,24 @@ CREATE TABLE IF NOT EXISTS employees (
   phone TEXT NOT NULL DEFAULT '',
   active INTEGER NOT NULL DEFAULT 1,
   capabilities TEXT NOT NULL DEFAULT '[]'
+);
+
+-- Manifest arsip foto: satu baris per foto yang sudah diunggah ke
+-- Drive. photo_key adalah kunci foto di tabel photos (dihapus dari
+-- photos setelah manifest tertulis); drive_path adalah path lengkap
+-- di Drive ({YYYY-MM}/{Nama Karyawan}/{file}).
+CREATE TABLE IF NOT EXISTS photo_archive (
+  photo_key TEXT PRIMARY KEY,
+  drive_file_id TEXT NOT NULL,
+  drive_path TEXT NOT NULL,
+  archived_at TEXT NOT NULL
+);
+
+-- Cache ID folder Drive untuk arsip. Kunci = root folder ID +
+-- path relatif (misal "<root>/2026-11/Putra"), supaya setelah
+-- migrasi ke folder baru cache lama tidak terpakai. Reset manual:
+-- DELETE FROM drive_folders; (cache dibangun ulang dari Drive).
+CREATE TABLE IF NOT EXISTS drive_folders (
+  path TEXT PRIMARY KEY,
+  folder_id TEXT NOT NULL
 );

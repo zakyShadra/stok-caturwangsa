@@ -25,10 +25,12 @@
 // Absensi + karyawan tinggal di D1 (lihat src/attendance.ts dan
 // src/employees.ts).
 //
-// Cron tiap tanggal 1 jam 00:00 WIB membuat tab bulanan baru di Sheet
-// (lihat wrangler.toml [triggers]).
+// Cron harian jam 01:00 WIB mengarsipkan foto absen lama ke Drive
+// dan membuat tab bulanan baru tiap tanggal 1 (lihat wrangler.toml
+// [triggers] dan archive.ts).
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { archiveOldPhotos } from './archive';
 import { attendanceRoutes } from './attendance';
 import type { AttendanceEnv } from './attendance';
 import { employeesRoutes } from './employees';
@@ -54,6 +56,7 @@ import {
 
 interface Env extends SheetsEnv, AttendanceEnv {
   ALLOWED_ORIGINS: string;
+  ARCHIVE_DRIVE_FOLDER_ID: string;
 }
 
 const STOCK_RANGE = "'Stok Terkini'!A2:I25";
@@ -544,10 +547,25 @@ app.get('/api/marketing', async (c) => {
 
 export default {
   fetch: app.fetch,
-  // Cron tiap tanggal 1 jam 00:00 WIB: buat tab untuk bulan yang baru
-  // dimulai. Kalau tab sudah ada (misal dibuat manual), tidak dibuat lagi.
+  // Cron harian jam 01:00 WIB: arsipkan foto absen lebih tua dari 2
+  // bulan ke Google Drive (lihat archive.ts). Tiap tanggal 1, buat
+  // juga tab bulanan baru di Sheet (perilaku lama). Kegagalan salah
+  // satu tidak boleh menggagalkan yang lain.
   async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
-    const { year, month } = wibYearMonth();
-    await createMonthlyTab(env, year, month);
+    const today = wibToday();
+    if (today.slice(8, 10) === '01') {
+      try {
+        const { year, month } = wibYearMonth();
+        await createMonthlyTab(env, year, month);
+      } catch (e) {
+        console.error('Cron tab bulanan gagal:', e instanceof Error ? e.message : e);
+      }
+    }
+    try {
+      const result = await archiveOldPhotos(env, today);
+      console.log(`Arsip foto: ${result.archived} diarsipkan, ${result.failed} gagal`);
+    } catch (e) {
+      console.error('Cron arsip foto gagal:', e instanceof Error ? e.message : e);
+    }
   },
 };

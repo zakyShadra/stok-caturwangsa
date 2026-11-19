@@ -17,11 +17,13 @@ ALLOWED_ORIGINS = "https://zakyshadra.github.io,https://caturwangsa.ices.my.id,h
 # baru di Drive perusahaan (lihat docs/migrasi-akun.md).
 ARCHIVE_DRIVE_FOLDER_ID = "1tIFFDXOKMLoHBNkDz_Mcw7m-JW1VreUx"
 
-# Cron tiap tanggal 1 jam 00:00 WIB (17:00 UTC hari sebelumnya):
-# membuat tab bulanan baru di Sheet untuk bulan yang baru dimulai.
-# Kalau tab bulan itu sudah ada, tidak dibuat lagi.
+# Cron harian jam 01:00 WIB (18:00 UTC hari sebelumnya):
+# arsipkan foto absen lebih tua dari 2 bulan ke Google Drive (lihat
+# worker/src/archive.ts). Tiap tanggal 1, buat juga tab bulanan baru
+# di Sheet untuk bulan yang baru dimulai; kalau tab bulan itu sudah
+# ada, tidak dibuat lagi.
 [triggers]
-crons = ["0 17 1 * *"]
+crons = ["0 18 * * *"]
 
 # Database absensi (D1): catatan absen + verifikasi selfie + bukti
 # kerja + foto (base64, sementara; lihat worker/schema.sql).

@@ -1,7 +1,8 @@
 // Endpoint absensi Sabun Palem. Data absensi tinggal di D1 (database
 // sabun-palem-absen), foto selfie dan bukti kerja tinggal di tabel
-// photos di D1 yang sama (base64; lihat schema.sql untuk alasan dan
-// rencana migrasi ke R2). Worker adalah satu-satunya sumber kebenaran:
+// photos di D1 yang sama (base64; foto lebih tua dari 2 bulan
+// diarsipkan ke Google Drive, lihat schema.sql dan archive.ts).
+// Worker adalah satu-satunya sumber kebenaran:
 // aplikasi di HP mana pun membaca data yang sama, jadi Bos bisa
 // melihat selfie karyawan dari HP-nya sendiri dan Manager bisa melihat
 // laporan dari HP-nya.
@@ -233,7 +234,9 @@ function toRecordJson(
       name: e.name,
       kind: e.kind,
       sizeLabel: e.size_label,
-      url: photoUrl(c, e.photo_key),
+      // photo_key kosong = foto sudah diarsipkan ke Drive, UI
+      // menampilkan teks arsip, bukan gambar rusak.
+      url: e.photo_key ? photoUrl(c, e.photo_key) : null,
     })),
   };
 }
