@@ -12,6 +12,11 @@ compatibility_date = "2025-11-01"
 # alamat langsung Worker, tapi aplikasi memakai domain ini.
 routes = [{ pattern = "api.ices.my.id", custom_domain = true }]
 
+# workers.dev tetap aktif sebagai alamat langsung Worker (dipakai
+# untuk diagnosa dan tes). Tanpa baris ini, wrangler menonaktifkan
+# workers.dev begitu ada routes custom domain.
+workers_dev = true
+
 # ID sheet TIDAK sensitif (hanya pengenal), jadi disimpan sebagai var
 # biasa di sini. Yang rahasia (email + private key service account)
 # TIDAK BOLEH masuk file ini; keduanya disimpan sebagai Worker secrets:
