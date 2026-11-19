@@ -64,7 +64,16 @@ function PersonIcon() {
 // Thumbnail dibuat shrink-0 supaya tidak pernah menumpuk teks.
 function SelfieThumb({ url, label, onView }: { url: string | null | undefined; label: string; onView: () => void }) {
   const [failed, setFailed] = useState(false);
-  if (!url || failed) {
+  if (!url) {
+    // Verifikasi ada tapi foto tidak ada: fotonya sudah diarsipkan
+    // ke Drive (retensi 2 bulan), bukan hilang.
+    return (
+      <div className="flex h-14 w-20 shrink-0 items-center justify-center rounded-control bg-primary-soft/50 px-1 text-center">
+        <span className="text-xs font-bold leading-tight text-primary-deep">Foto sudah diarsipkan ke Drive</span>
+      </div>
+    );
+  }
+  if (failed) {
     return (
       <div className="flex h-14 w-20 shrink-0 flex-col items-center justify-center rounded-control bg-primary-soft/50 px-1 text-center">
         <PersonIcon />
@@ -107,6 +116,7 @@ function EvidenceItem({
         <button
           type="button"
           onClick={onView}
+          disabled={!file.url}
           aria-label={`Buka ${file.name}`}
           className="flex h-14 w-20 shrink-0 items-center justify-center rounded-control bg-primary-soft/50"
         >
@@ -120,6 +130,9 @@ function EvidenceItem({
       <div className="min-w-0 flex-1">
         <p className="truncate text-base font-bold text-ink">{file.name}</p>
         <p className="text-sm text-ink-muted">{file.sizeLabel}</p>
+        {!file.url ? (
+          <p className="text-sm text-ink-muted">File sudah diarsipkan ke Drive</p>
+        ) : null}
       </div>
       {onRemove ? (
         <button
