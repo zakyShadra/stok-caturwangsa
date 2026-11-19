@@ -19,6 +19,7 @@ import { useAttendanceState } from '../lib/attendance-state';
 import { useEmployees } from '../lib/employees';
 import { verificationKey } from '../lib/attendance-api';
 import {
+  POOR_ACCURACY_METERS,
   canUploadEvidence,
   formatDateID,
   jakartaDate,
@@ -160,6 +161,11 @@ function VerificationRow({
           {label} {data.time} · {data.distanceMeters} m dari kantor
         </p>
         <p className="truncate text-sm text-ink-muted">{data.selfieName}</p>
+        {(data.accuracyMeters ?? 0) > POOR_ACCURACY_METERS ? (
+          <p className="mt-1 inline-flex rounded-full bg-warning/10 px-2.5 py-1 text-sm font-bold text-warning-ink">
+            Lokasi tidak akurat (±{data.accuracyMeters?.toLocaleString('id-ID')} m)
+          </p>
+        ) : null}
       </div>
     </div>
   );

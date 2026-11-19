@@ -19,6 +19,7 @@ import { useAttendanceState } from '../lib/attendance-state';
 import {
   GEOFENCE_RADIUS_METERS,
   OFFICE_LOCATION,
+  POOR_ACCURACY_METERS,
   haversineDistanceMeters,
   jakartaTime,
 } from '../lib/attendance';
@@ -29,8 +30,8 @@ type Step =
   | { kind: 'outside'; distanceMeters: number }
   | { kind: 'denied' }
   | { kind: 'unavailable' }
-  | { kind: 'selfie'; lat: number; lon: number; distanceMeters: number }
-  | { kind: 'preview'; lat: number; lon: number; distanceMeters: number; url: string; name: string };
+  | { kind: 'selfie'; lat: number; lon: number; distanceMeters: number; accuracyMeters: number }
+  | { kind: 'preview'; lat: number; lon: number; distanceMeters: number; accuracyMeters: number; url: string; name: string };
 
 interface Props {
   type: 'masuk' | 'pulang';
@@ -64,12 +65,15 @@ export default function CheckInFlow({ type, onComplete, onCancel }: Props) {
     setStep({ kind: 'locating' });
     getPosition()
       .then((pos) => {
-        const { latitude, longitude } = pos.coords;
+        const { latitude, longitude, accuracy } = pos.coords;
         const distance = Math.round(
           haversineDistanceMeters(latitude, longitude, OFFICE_LOCATION.lat, OFFICE_LOCATION.lon),
         );
-        if (distance <= GEOFENCE_RADIUS_METERS) {
-          setStep({ kind: 'selfie', lat: latitude, lon: longitude, distanceMeters: distance });
+        // Akurasi jelek (laptop tanpa GPS, posisi dari IP/WiFi):
+        // jaraknya tidak bisa dipercaya, jadi absen tetap lanjut ke
+        // selfie dan server menandainya untuk keputusan Bos.
+        if (distance <= GEOFENCE_RADIUS_METERS || accuracy > POOR_ACCURACY_METERS) {
+          setStep({ kind: 'selfie', lat: latitude, lon: longitude, distanceMeters: distance, accuracyMeters: Math.round(accuracy) });
         } else {
           setStep({ kind: 'outside', distanceMeters: distance });
         }
@@ -95,7 +99,7 @@ export default function CheckInFlow({ type, onComplete, onCancel }: Props) {
   const handleFile = (files: FileList | null) => {
     if (!files || files.length === 0 || step.kind !== 'selfie') return;
     const file = files[0];
-    const { lat, lon, distanceMeters } = step;
+    const { lat, lon, distanceMeters, accuracyMeters } = step;
     // Foto dibaca dulu jadi data URL, baru pindah ke preview. Selama
     // membaca, tetap di langkah selfie (prosesnya sepersekian detik).
     void fileToDataUrl(file).then((url) => {
@@ -105,6 +109,7 @@ export default function CheckInFlow({ type, onComplete, onCancel }: Props) {
         lat,
         lon,
         distanceMeters,
+        accuracyMeters,
         url,
         name: file.name,
       });
@@ -114,7 +119,7 @@ export default function CheckInFlow({ type, onComplete, onCancel }: Props) {
 
   const handleRetake = () => {
     if (step.kind !== 'preview') return;
-    setStep({ kind: 'selfie', lat: step.lat, lon: step.lon, distanceMeters: step.distanceMeters });
+    setStep({ kind: 'selfie', lat: step.lat, lon: step.lon, distanceMeters: step.distanceMeters, accuracyMeters: step.accuracyMeters });
   };
 
   const handleConfirm = () => {
@@ -123,6 +128,7 @@ export default function CheckInFlow({ type, onComplete, onCancel }: Props) {
       lat: step.lat,
       lon: step.lon,
       distanceMeters: step.distanceMeters,
+      accuracyMeters: step.accuracyMeters,
       selfieUrl: step.url,
       selfieName: step.name,
       time: jakartaTime(),
@@ -213,9 +219,16 @@ export default function CheckInFlow({ type, onComplete, onCancel }: Props) {
 
         {step.kind === 'selfie' ? (
           <div className="py-4">
-            <p className="rounded-button bg-success/10 px-4 py-3 text-center text-lg font-bold text-success-ink">
-              Anda di area pabrik ({step.distanceMeters} meter dari kantor).
-            </p>
+            {step.accuracyMeters > POOR_ACCURACY_METERS ? (
+              <p className="rounded-button bg-warning/10 px-4 py-3 text-center text-lg font-bold text-warning-ink">
+                Lokasi tidak akurat (kurang lebih {step.accuracyMeters.toLocaleString('id-ID')} meter).
+                Absen tetap dicatat, Bos yang memutuskan.
+              </p>
+            ) : (
+              <p className="rounded-button bg-success/10 px-4 py-3 text-center text-lg font-bold text-success-ink">
+                Anda di area pabrik ({step.distanceMeters} meter dari kantor).
+              </p>
+            )}
             <p className="mt-5 text-center text-lg text-ink">
               Sekarang foto wajah Anda. Pastikan wajah terlihat jelas.
             </p>

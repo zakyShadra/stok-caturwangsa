@@ -171,6 +171,12 @@ export const OFFICE_LOCATION = {
 // Jarak maksimum dari kantor supaya absen diterima (meter).
 export const GEOFENCE_RADIUS_METERS = 200;
 
+// Akurasi GPS di atas ini dianggap tidak bisa diandalkan (laptop
+// tanpa GPS, posisi dari IP/WiFi). Absen dengan akurasi seburuk ini
+// tetap dicatat sebagai pending dengan flag, Bos yang memutuskan.
+// Salinan nilai yang sama ada di worker/src/attendance.ts.
+export const POOR_ACCURACY_METERS = 500;
+
 // Jarak dua titik di bumi dalam meter (rumus Haversine).
 export function haversineDistanceMeters(
   lat1: number,
@@ -198,6 +204,7 @@ export interface CheckVerification {
   lat: number;
   lon: number;
   distanceMeters: number; // jarak dari kantor saat absen
+  accuracyMeters?: number | null; // akurasi GPS (meter) dari coords.accuracy
   selfieUrl: string | null; // data URL foto selfie (bukan object URL)
   selfieName: string;
   time: string; // HH:MM

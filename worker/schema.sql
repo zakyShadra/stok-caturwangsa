@@ -37,11 +37,18 @@ CREATE TABLE IF NOT EXISTS verification (
   lat REAL NOT NULL,
   lon REAL NOT NULL,
   distance_m INTEGER NOT NULL,
+  accuracy_m INTEGER,
   selfie_key TEXT,
   selfie_name TEXT NOT NULL,
   time TEXT NOT NULL,
   UNIQUE (attendance_id, kind)
 );
+-- accuracy_m: akurasi GPS (meter) saat absen, dari coords.accuracy.
+-- NULL = aplikasi lama tidak mengirim (dianggap presisi). Akurasi di
+-- atas 500 m ditandai "Lokasi tidak akurat" di antrean Bos, karena
+-- jaraknya tidak bisa dipercaya (kasus laptop tanpa GPS).
+-- Migrasi database yang sudah ada:
+--   ALTER TABLE verification ADD COLUMN accuracy_m INTEGER;
 
 CREATE TABLE IF NOT EXISTS evidence (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

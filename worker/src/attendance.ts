@@ -11,7 +11,7 @@
 //          -> catatan absen + verifikasi (selfie) + bukti kerja
 //             + reviews (marker cek bukti kerja oleh Manager)
 //   POST   /api/absen/check-in   {employeeId, date, time, lat, lon,
-//          distanceMeters, selfieName, selfieData}
+//          distanceMeters, accuracy, selfieName, selfieData}
 //   POST   /api/absen/check-out  (bentuk sama seperti check-in)
 //   POST   /api/absen/approval   {employeeId, date, approval}
 //   POST   /api/absen/leave      {employeeId, date, type: Izin|Cuti}
@@ -30,6 +30,12 @@
 //   pending). Izin/Cuti tidak bisa diajukan kalau tanggal itu sudah
 //   ada catatan, dan sebaliknya.
 // - Absen pulang butuh catatan absen masuk yang belum ditolak.
+// - Geofence ditegakkan server-side: jarak dihitung ulang dari
+//   lat/lon ke kantor, jarak dari aplikasi TIDAK dipercaya. Di luar
+//   radius 200 m dengan akurasi GPS bagus, check-in/out ditolak.
+//   Kalau akurasinya jelek (lebih dari 500 m, misal laptop tanpa
+//   GPS yang posisinya dari IP/WiFi), check-in diterima sebagai
+//   pending dengan flag, Bos yang memutuskan.
 // - Foto dibatasi 700 KB base64 (sekitar 512 KB data asli). Selfie
 //   sudah diperkecil di aplikasi (maks 640px, JPEG 0.82), jadi
 //   batas ini tidak akan tercapai dalam pemakaian normal.
@@ -43,6 +49,54 @@ const MAX_PHOTO_BASE64 = 700_000;
 const KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+// Lokasi kantor + radius geofence. SALINAN dari
+// src/lib/attendance.ts (worker tidak bisa import dari aplikasi):
+// kalau koordinat kantor berubah, ubah di kedua tempat.
+const OFFICE_LOCATION = { lat: -6.93789, lon: 107.59914 };
+const GEOFENCE_RADIUS_METERS = 200;
+// Akurasi GPS di atas ini dianggap tidak bisa diandalkan (laptop
+// tanpa GPS, posisi dari IP/WiFi). Check-in dengan akurasi seburuk
+// ini tidak ditolak, tapi dicatat dengan flag supaya Bos tahu.
+const POOR_ACCURACY_METERS = 500;
+
+// Jarak dua titik di bumi dalam meter (rumus Haversine). Salinan
+// dari src/lib/attendance.ts, alasan yang sama seperti di atas.
+function haversineDistanceMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// Hitung jarak server-side dari lat/lon ke kantor. Jarak dari
+// aplikasi TIDAK dipercaya (API terbuka, siapa pun bisa mengirim
+// angka kecil). Akurasi null (aplikasi lama tidak mengirim) dianggap
+// presisi, jadi penegakan tetap ketat. Kembalikan jarak meter, atau
+// pesan error kalau check-in/out harus ditolak.
+function checkGeofence(
+  lat: number,
+  lon: number,
+  accuracy: number | null,
+): { distanceMeters: number } | { error: string } {
+  const distance = Math.round(
+    haversineDistanceMeters(lat, lon, OFFICE_LOCATION.lat, OFFICE_LOCATION.lon),
+  );
+  const precise = accuracy === null || accuracy <= POOR_ACCURACY_METERS;
+  if (distance > GEOFENCE_RADIUS_METERS && precise) {
+    return { error: `Anda di luar area pabrik. Jarak Anda dari kantor ${distance} meter.` };
+  }
+  return { distanceMeters: distance };
+}
 
 function jsonError(c: { json: (body: object, status: number) => Response }, status: number, message: string) {
   return c.json({ error: message }, status);
@@ -101,6 +155,7 @@ interface VerificationRow {
   lat: number;
   lon: number;
   distance_m: number;
+  accuracy_m: number | null;
   selfie_key: string | null;
   selfie_name: string;
   time: string;
@@ -140,6 +195,7 @@ function toRecordJson(
           lat: v.lat,
           lon: v.lon,
           distanceMeters: v.distance_m,
+          accuracyMeters: v.accuracy_m,
           selfieUrl: v.selfie_key ? photoUrl(c, v.selfie_key) : null,
           selfieName: v.selfie_name,
           time: v.time,
@@ -241,6 +297,7 @@ interface CheckBody {
   lat?: unknown;
   lon?: unknown;
   distanceMeters?: unknown;
+  accuracy?: unknown;
   selfieName?: unknown;
   selfieData?: unknown;
 }
@@ -255,6 +312,15 @@ function validateCheck(body: CheckBody): string | null {
   if (typeof body.lon !== 'number' || body.lon < -180 || body.lon > 180) return 'lon tidak benar';
   if (typeof body.distanceMeters !== 'number' || body.distanceMeters < 0 || body.distanceMeters > 100000) {
     return 'distanceMeters tidak benar';
+  }
+  // accuracy opsional (aplikasi lama tidak mengirim); kalau ada harus
+  // angka yang masuk akal. Dipakai untuk flag lokasi tidak akurat.
+  if (
+    body.accuracy !== undefined &&
+    body.accuracy !== null &&
+    (typeof body.accuracy !== 'number' || body.accuracy < 0 || body.accuracy > 1000000)
+  ) {
+    return 'accuracy tidak benar';
   }
   if (typeof body.selfieName !== 'string' || body.selfieName.trim() === '' || body.selfieName.length > 200) {
     return 'selfieName tidak benar';
@@ -304,6 +370,9 @@ attendanceRoutes.post('/check-in', async (c) => {
   if (invalid) return jsonError(c, 400, invalid);
   const photo = parseDataUrl(body.selfieData);
   if (!photo) return jsonError(c, 400, 'selfieData tidak benar');
+  const accuracy = typeof body.accuracy === 'number' ? body.accuracy : null;
+  const geo = checkGeofence(body.lat as number, body.lon as number, accuracy);
+  if ('error' in geo) return jsonError(c, 400, geo.error);
   const db = c.env.sabun_palem_absen;
   const employeeId = body.employeeId as number;
   const date = body.date as string;
@@ -342,14 +411,15 @@ attendanceRoutes.post('/check-in', async (c) => {
     }
     await db
       .prepare(
-        'INSERT INTO verification (attendance_id, kind, lat, lon, distance_m, selfie_key, selfie_name, time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO verification (attendance_id, kind, lat, lon, distance_m, accuracy_m, selfie_key, selfie_name, time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .bind(
         attendanceId,
         'masuk',
         body.lat as number,
         body.lon as number,
-        Math.round(body.distanceMeters as number),
+        geo.distanceMeters,
+        accuracy === null ? null : Math.round(accuracy),
         key,
         (body.selfieName as string).trim(),
         time,
@@ -375,6 +445,9 @@ attendanceRoutes.post('/check-out', async (c) => {
   if (invalid) return jsonError(c, 400, invalid);
   const photo = parseDataUrl(body.selfieData);
   if (!photo) return jsonError(c, 400, 'selfieData tidak benar');
+  const accuracy = typeof body.accuracy === 'number' ? body.accuracy : null;
+  const geo = checkGeofence(body.lat as number, body.lon as number, accuracy);
+  if ('error' in geo) return jsonError(c, 400, geo.error);
   const db = c.env.sabun_palem_absen;
   const employeeId = body.employeeId as number;
   const date = body.date as string;
@@ -401,14 +474,15 @@ attendanceRoutes.post('/check-out', async (c) => {
       .run();
     await db
       .prepare(
-        'INSERT INTO verification (attendance_id, kind, lat, lon, distance_m, selfie_key, selfie_name, time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO verification (attendance_id, kind, lat, lon, distance_m, accuracy_m, selfie_key, selfie_name, time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .bind(
         existing.id,
         'pulang',
         body.lat as number,
         body.lon as number,
-        Math.round(body.distanceMeters as number),
+        geo.distanceMeters,
+        accuracy === null ? null : Math.round(accuracy),
         key,
         (body.selfieName as string).trim(),
         time,
