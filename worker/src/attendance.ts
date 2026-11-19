@@ -47,6 +47,12 @@
 // - Foto dibatasi 700 KB base64 (sekitar 512 KB data asli). Selfie
 //   sudah diperkecil di aplikasi (maks 640px, JPEG 0.82), jadi
 //   batas ini tidak akan tercapai dalam pemakaian normal.
+// - Rangkaian tulis check-in, check-out, dan evidence memakai satu
+//   db.batch: gagal semua atau berhasil semua (tidak ada foto yatim
+//   atau catatan tanpa verifikasi).
+// - MIME bukti kerja dibatasi (gambar + PDF + dokumen Office + teks
+//   biasa); file non-gambar disajikan sebagai attachment supaya
+//   tidak dirender di origin Worker.
 import { Hono } from 'hono';
 
 export interface AttendanceEnv {
@@ -380,29 +386,36 @@ function validateCheck(body: CheckBody): string | null {
   return null;
 }
 
-async function storePhoto(
-  db: D1Database,
-  key: string,
-  mime: string,
-  base64: string,
-): Promise<void> {
+// Statement insert foto, dipakai di dalam db.batch supaya foto +
+// catatan + verifikasi berhasil semua atau gagal semua.
+function photoInsertStmt(db: D1Database, key: string, mime: string, base64: string) {
   const size = Math.floor((base64.length * 3) / 4);
-  await db
+  return db
     .prepare('INSERT INTO photos (key, data, mime, size) VALUES (?, ?, ?, ?)')
-    .bind(key, base64, mime, size)
-    .run();
+    .bind(key, base64, mime, size);
 }
 
-async function deletePhotosForAttendance(db: D1Database, attendanceId: number): Promise<void> {
+// Kunci foto lama satu catatan absen (untuk dihapus saat absen masuk
+// diulang setelah ditolak). SELECT-nya di luar batch karena batch
+// tidak bisa membaca hasil statement sebelumnya.
+async function oldPhotoKeysForAttendance(db: D1Database, attendanceId: number): Promise<string[]> {
   const rows = await db
     .prepare('SELECT selfie_key FROM verification WHERE attendance_id = ? AND selfie_key IS NOT NULL')
     .bind(attendanceId)
     .all<{ selfie_key: string }>();
-  for (const r of rows.results ?? []) {
-    await db.prepare('DELETE FROM photos WHERE key = ?').bind(r.selfie_key).run();
-  }
-  await db.prepare('DELETE FROM verification WHERE attendance_id = ?').bind(attendanceId).run();
+  return (rows.results ?? []).map((r) => r.selfie_key);
 }
+
+// MIME bukti kerja yang diizinkan selain gambar: sama seperti accept
+// di input file aplikasi (PDF + dokumen Office + teks biasa).
+const EVIDENCE_MIME_ALLOWLIST = new Set([
+  'application/pdf',
+  'text/plain',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+]);
 
 // POST /api/absen/check-in: catat absen masuk + selfie. Kalau catatan
 // hari itu sudah ada dan belum ditolak, tolak (sudah absen). Kalau
@@ -440,42 +453,45 @@ attendanceRoutes.post('/check-in', async (c) => {
       return jsonError(c, 400, 'Sudah absen masuk hari ini');
     }
     const key = `selfie-${employeeId}-${date}-masuk-${randomSuffix()}`;
-    await storePhoto(db, key, photo.mime, photo.base64);
-    let attendanceId: number;
+    const now = nowIso();
+    const accuracyValue = accuracy === null ? null : Math.round(accuracy);
+    const selfieName = (body.selfieName as string).trim();
     if (existing) {
-      await deletePhotosForAttendance(db, existing.id);
-      await db
-        .prepare(
-          "UPDATE attendance SET check_in = ?, check_out = NULL, status = 'Hadir', approval = 'pending', updated_at = ? WHERE id = ?",
-        )
-        .bind(time, nowIso(), existing.id)
-        .run();
-      attendanceId = existing.id;
+      // Absen masuk diulang setelah ditolak: hapus foto + verifikasi
+      // lama, lalu tulis yang baru, semua dalam satu batch.
+      const oldKeys = await oldPhotoKeysForAttendance(db, existing.id);
+      await db.batch([
+        ...oldKeys.map((k) => db.prepare('DELETE FROM photos WHERE key = ?').bind(k)),
+        db.prepare('DELETE FROM verification WHERE attendance_id = ?').bind(existing.id),
+        db
+          .prepare(
+            "UPDATE attendance SET check_in = ?, check_out = NULL, status = 'Hadir', approval = 'pending', updated_at = ? WHERE id = ?",
+          )
+          .bind(time, now, existing.id),
+        photoInsertStmt(db, key, photo.mime, photo.base64),
+        db
+          .prepare(
+            'INSERT INTO verification (attendance_id, kind, lat, lon, distance_m, accuracy_m, selfie_key, selfie_name, time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          )
+          .bind(existing.id, 'masuk', body.lat as number, body.lon as number, geo.distanceMeters, accuracyValue, key, selfieName, time),
+      ]);
     } else {
-      const res = await db
-        .prepare(
-          "INSERT INTO attendance (employee_id, date, check_in, check_out, status, approval, created_at, updated_at) VALUES (?, ?, ?, NULL, 'Hadir', 'pending', ?, ?)",
-        )
-        .bind(employeeId, date, time, nowIso(), nowIso())
-        .run();
-      attendanceId = Number(res.meta.last_row_id);
+      await db.batch([
+        photoInsertStmt(db, key, photo.mime, photo.base64),
+        db
+          .prepare(
+            "INSERT INTO attendance (employee_id, date, check_in, check_out, status, approval, created_at, updated_at) VALUES (?, ?, ?, NULL, 'Hadir', 'pending', ?, ?)",
+          )
+          .bind(employeeId, date, time, now, now),
+        // ID catatan baru diambil lewat subquery: batch tidak bisa
+        // membaca last_row_id statement sebelumnya.
+        db
+          .prepare(
+            'INSERT INTO verification (attendance_id, kind, lat, lon, distance_m, accuracy_m, selfie_key, selfie_name, time) VALUES ((SELECT id FROM attendance WHERE employee_id = ? AND date = ?), ?, ?, ?, ?, ?, ?, ?, ?)',
+          )
+          .bind(employeeId, date, 'masuk', body.lat as number, body.lon as number, geo.distanceMeters, accuracyValue, key, selfieName, time),
+      ]);
     }
-    await db
-      .prepare(
-        'INSERT INTO verification (attendance_id, kind, lat, lon, distance_m, accuracy_m, selfie_key, selfie_name, time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      )
-      .bind(
-        attendanceId,
-        'masuk',
-        body.lat as number,
-        body.lon as number,
-        geo.distanceMeters,
-        accuracy === null ? null : Math.round(accuracy),
-        key,
-        (body.selfieName as string).trim(),
-        time,
-      )
-      .run();
     return c.json({ ok: true });
   } catch (e) {
     console.error('POST /api/absen/check-in gagal:', e instanceof Error ? e.message : e);
@@ -526,27 +542,27 @@ attendanceRoutes.post('/check-out', async (c) => {
       return jsonError(c, 400, 'Jam pulang harus setelah jam masuk');
     }
     const key = `selfie-${employeeId}-${date}-pulang-${randomSuffix()}`;
-    await storePhoto(db, key, photo.mime, photo.base64);
-    await db
-      .prepare('UPDATE attendance SET check_out = ?, updated_at = ? WHERE id = ?')
-      .bind(time, nowIso(), existing.id)
-      .run();
-    await db
-      .prepare(
-        'INSERT INTO verification (attendance_id, kind, lat, lon, distance_m, accuracy_m, selfie_key, selfie_name, time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      )
-      .bind(
-        existing.id,
-        'pulang',
-        body.lat as number,
-        body.lon as number,
-        geo.distanceMeters,
-        accuracy === null ? null : Math.round(accuracy),
-        key,
-        (body.selfieName as string).trim(),
-        time,
-      )
-      .run();
+    await db.batch([
+      photoInsertStmt(db, key, photo.mime, photo.base64),
+      db
+        .prepare('UPDATE attendance SET check_out = ?, updated_at = ? WHERE id = ?')
+        .bind(time, nowIso(), existing.id),
+      db
+        .prepare(
+          'INSERT INTO verification (attendance_id, kind, lat, lon, distance_m, accuracy_m, selfie_key, selfie_name, time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        )
+        .bind(
+          existing.id,
+          'pulang',
+          body.lat as number,
+          body.lon as number,
+          geo.distanceMeters,
+          accuracy === null ? null : Math.round(accuracy),
+          key,
+          (body.selfieName as string).trim(),
+          time,
+        ),
+    ]);
     return c.json({ ok: true });
   } catch (e) {
     console.error('POST /api/absen/check-out gagal:', e instanceof Error ? e.message : e);
@@ -671,6 +687,9 @@ attendanceRoutes.post('/evidence', async (c) => {
   if (photo.base64.length > MAX_PHOTO_BASE64) {
     return jsonError(c, 400, 'File terlalu besar (maksimal sekitar 500 KB)');
   }
+  if (!photo.mime.startsWith('image/') && !EVIDENCE_MIME_ALLOWLIST.has(photo.mime)) {
+    return jsonError(c, 400, 'Jenis file bukti tidak diizinkan');
+  }
   if (body.date !== todayJakarta()) {
     return jsonError(c, 400, 'Bukti kerja hanya bisa dilampirkan untuk hari ini');
   }
@@ -686,15 +705,16 @@ attendanceRoutes.post('/evidence', async (c) => {
       return jsonError(c, 400, 'Tidak ada catatan absen untuk tanggal ini');
     }
     const key = `bukti-${body.employeeId}-${body.date}-${randomSuffix()}`;
-    await storePhoto(db, key, photo.mime, photo.base64);
-    const res = await db
-      .prepare(
-        'INSERT INTO evidence (employee_id, date, name, kind, size_label, photo_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      )
-      .bind(body.employeeId, body.date, body.name.trim(), body.kind, body.sizeLabel, key, nowIso())
-      .run();
+    const results = await db.batch([
+      photoInsertStmt(db, key, photo.mime, photo.base64),
+      db
+        .prepare(
+          'INSERT INTO evidence (employee_id, date, name, kind, size_label, photo_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        )
+        .bind(body.employeeId, body.date, body.name.trim(), body.kind, body.sizeLabel, key, nowIso()),
+    ]);
     return c.json({
-      id: String(res.meta.last_row_id),
+      id: String(results[1].meta.last_row_id),
       name: body.name.trim(),
       kind: body.kind,
       sizeLabel: body.sizeLabel,
@@ -789,12 +809,16 @@ attendanceRoutes.get('/foto/:key', async (c) => {
       .first<{ data: string; mime: string }>();
     if (!row) return jsonError(c, 404, 'Foto tidak ditemukan');
     const binary = Uint8Array.from(atob(row.data), (ch) => ch.charCodeAt(0));
-    return new Response(binary, {
-      headers: {
-        'Content-Type': row.mime,
-        'Cache-Control': 'public, max-age=86400',
-      },
-    });
+    // File non-gambar disajikan sebagai attachment, supaya tidak
+    // dirender di origin Worker.
+    const headers: Record<string, string> = {
+      'Content-Type': row.mime,
+      'Cache-Control': 'public, max-age=86400',
+    };
+    if (!row.mime.startsWith('image/')) {
+      headers['Content-Disposition'] = 'attachment';
+    }
+    return new Response(binary, { headers });
   } catch (e) {
     console.error('GET /api/absen/foto gagal:', e instanceof Error ? e.message : e);
     return jsonError(c, 502, 'Gagal membaca foto');
