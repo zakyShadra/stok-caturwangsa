@@ -33,6 +33,7 @@ import { cors } from 'hono/cors';
 import { archiveOldPhotos } from './archive';
 import { attendanceRoutes } from './attendance';
 import type { AttendanceEnv } from './attendance';
+import type { DriveEnv } from './drive';
 import { employeesRoutes } from './employees';
 import { getMarketing } from './marketing';
 import { insertRowAtTop, readRange } from './sheets';
@@ -54,7 +55,7 @@ import {
   isLocationId,
 } from './products';
 
-interface Env extends SheetsEnv, AttendanceEnv {
+interface Env extends SheetsEnv, AttendanceEnv, DriveEnv {
   ALLOWED_ORIGINS: string;
   ARCHIVE_DRIVE_FOLDER_ID: string;
 }

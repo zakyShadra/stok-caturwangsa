@@ -2,28 +2,77 @@
 // (archive.ts): foto absen lebih tua dari 2 bulan diunggah ke folder
 // Drive, baru dihapus dari D1 setelah upload terverifikasi.
 //
-// Autentikasi memakai service account yang sama dengan Sheets
-// (secrets SHEETS_CLIENT_EMAIL + SHEETS_PRIVATE_KEY), scope
-// drive.file. Folder tujuan dari env ARCHIVE_DRIVE_FOLDER_ID
-// (bukan hardcode, supaya migrasi ke akun perusahaan hanya mengubah
-// nilai env). Folder itu harus di-share ke service account sebagai
-// Editor, dan Drive API harus aktif di project GCP-nya.
-import { getAccessToken } from './sheets';
-import type { GoogleAuthEnv } from './sheets';
+// Autentikasi memakai OAuth akun PENGGUNA (refresh token), BUKAN
+// service account. Alasan: service account tidak punya kuota storage
+// Drive (0 byte), jadi upload file apa pun ditolak Google dengan 403
+// "Service Accounts do not have storage quota" (ditemukan di tes live
+// 19 Nov 2026; folder masih bisa dibuat karena folder tidak makan
+// kuota). Dengan refresh token akun Zaky, file yang diunggah dimiliki
+// Zaky dan memakai kuota Drive 15 GB miliknya.
+//
+// Secrets (wrangler secret put, TIDAK BOLEH masuk file):
+//   DRIVE_CLIENT_ID, DRIVE_CLIENT_SECRET, DRIVE_REFRESH_TOKEN
+// Cara mendapatkan: buat OAuth client (Web) di project GCP yang sama
+// (redirect URI https://developers.google.com/oauthplayground),
+// PUBLISH consent screen ke Production DULU (token yang dibuat saat
+// Testing kedaluwarsa 7 hari), lalu jalankan flow di OAuth 2.0
+// Playground dengan kredensial sendiri (access type Offline, scope
+// drive.file saja) dan ambil refresh_token-nya. Sheets tetap memakai
+// service account (menulis ke sheet milik Zaky tidak makan kuota SA).
+//
+// Migrasi ke akun perusahaan: buat OAuth client + refresh token baru
+// di akun perusahaan, ganti ketiga secret + ARCHIVE_DRIVE_FOLDER_ID.
+// TIDAK ada perubahan kode.
+export interface DriveEnv {
+  DRIVE_CLIENT_ID: string;
+  DRIVE_CLIENT_SECRET: string;
+  DRIVE_REFRESH_TOKEN: string;
+}
 
-export type DriveEnv = GoogleAuthEnv;
-
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const DRIVE_BASE = 'https://www.googleapis.com/drive/v3';
 const DRIVE_UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3';
+const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
+
+// Cache access token di memori isolat: satu token dipakai untuk semua
+// upload dalam satu jalan cron (berlaku 1 jam, dipakai dengan margin
+// 1 menit). Isolat Worker bisa didaur ulang antar jalan, jadi cache
+// ini hanya optimasi, bukan keharusan.
+let cachedToken: { token: string; expiresAt: number } | null = null;
+
+async function getDriveAccessToken(env: DriveEnv): Promise<string> {
+  if (cachedToken && Date.now() < cachedToken.expiresAt - 60000) {
+    return cachedToken.token;
+  }
+  const res = await fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: env.DRIVE_CLIENT_ID,
+      client_secret: env.DRIVE_CLIENT_SECRET,
+      refresh_token: env.DRIVE_REFRESH_TOKEN,
+      grant_type: 'refresh_token',
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Drive token ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const data = (await res.json()) as { access_token?: string; expires_in?: number };
+  if (!data.access_token) throw new Error('Drive tidak mengembalikan access token');
+  cachedToken = {
+    token: data.access_token,
+    expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000,
+  };
+  return data.access_token;
+}
 
 async function driveFetch(
   env: DriveEnv,
   path: string,
   init?: RequestInit,
 ): Promise<{ files?: { id: string; name: string }[]; id?: string }> {
-  const token = await getAccessToken(env, DRIVE_SCOPE);
+  const token = await getDriveAccessToken(env);
   const res = await fetch(`${DRIVE_BASE}${path}`, {
     ...init,
     headers: {
@@ -74,7 +123,7 @@ export async function uploadFileToDrive(
   mimeType: string,
   bytes: Uint8Array,
 ): Promise<{ id: string; size: number }> {
-  const token = await getAccessToken(env, DRIVE_SCOPE);
+  const token = await getDriveAccessToken(env);
   const boundary = `muse-${crypto.randomUUID()}`;
   const metadata = JSON.stringify({ name, mimeType, parents: [parentId] });
   const enc = new TextEncoder();
