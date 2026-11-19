@@ -5,7 +5,14 @@
 // canvas (sisi terpanjang maks 640px, JPEG kualitas 0.82) supaya
 // ukurannya tinggal puluhan KB sebelum di-upload ke server.
 // Dokumen (bukan gambar) dibaca apa adanya, tanpa diubah.
-export function fileToDataUrl(file: File): Promise<string> {
+export async function fileToDataUrl(file: File): Promise<string> {
+  // Dokumen (bukan gambar) dibaca apa adanya, jadi cek ukurannya
+  // dulu: file 50 MB tidak perlu dibaca ke memori hanya untuk
+  // ditolak server. Gambar tidak dicek di sini karena diperkecil
+  // dulu di canvas sebelum di-upload.
+  if (!file.type.startsWith('image/') && file.size > 512000) {
+    throw new Error('File terlalu besar (maksimal sekitar 500 KB)');
+  }
   const readRaw = () =>
     new Promise<string>((resolve) => {
       const reader = new FileReader();

@@ -23,7 +23,6 @@
 //   POST   /api/absen/evidence-review -> Manager menandai bukti
 //          kerja sudah dicek {employeeId, date, reviewedBy}
 //   GET    /api/absen/foto/:key  -> isi foto (Content-Type sesuai mime)
-//   GET    /api/absen/recap?month=YYYY-MM -> hitungan per karyawan
 //
 // Aturan yang ditegakkan di sini (bukan hanya di aplikasi):
 // - Satu karyawan satu catatan per tanggal. Absen masuk yang sudah
@@ -825,41 +824,3 @@ attendanceRoutes.get('/foto/:key', async (c) => {
   }
 });
 
-// GET /api/absen/recap?month=YYYY-MM: hitungan per karyawan dalam
-// satu bulan (hanya yang sudah disetujui yang dihitung sebagai
-// hadir/izin; yang pending dihitung terpisah).
-attendanceRoutes.get('/recap', async (c) => {
-  const raw = c.req.query('month') ?? '';
-  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(raw);
-  if (!match) {
-    return jsonError(c, 400, 'month harus format YYYY-MM');
-  }
-  const month = raw;
-  const db = c.env.sabun_palem_absen;
-  try {
-    const rows = await db
-      .prepare(
-        `SELECT employee_id,
-          SUM(CASE WHEN approval = 'approved' AND status = 'Hadir' THEN 1 ELSE 0 END) AS hadir,
-          SUM(CASE WHEN approval = 'approved' AND status IN ('Izin', 'Cuti') THEN 1 ELSE 0 END) AS izin,
-          SUM(CASE WHEN approval = 'pending' THEN 1 ELSE 0 END) AS pending,
-          SUM(CASE WHEN approval = 'approved' THEN 1 ELSE 0 END) AS total
-         FROM attendance WHERE substr(date, 1, 7) = ? GROUP BY employee_id`,
-      )
-      .bind(month)
-      .all<{ employee_id: number; hadir: number; izin: number; pending: number; total: number }>();
-    return c.json({
-      month,
-      employees: (rows.results ?? []).map((r) => ({
-        employeeId: r.employee_id,
-        hadir: r.hadir,
-        izin: r.izin,
-        pending: r.pending,
-        total: r.total,
-      })),
-    });
-  } catch (e) {
-    console.error('GET /api/absen/recap gagal:', e instanceof Error ? e.message : e);
-    return jsonError(c, 502, 'Gagal membaca rekap');
-  }
-});

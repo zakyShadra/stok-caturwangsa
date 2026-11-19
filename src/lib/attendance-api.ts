@@ -18,7 +18,6 @@
 //   DELETE /api/absen/evidence/:id -> hapus bukti kerja
 //   POST   /api/absen/evidence-review -> Manager menandai bukti sudah dicek
 //   GET    /api/absen/foto/:key   -> isi foto (dipakai tag img)
-//   GET    /api/absen/recap?month -> hitungan per karyawan
 import { fileToDataUrl } from './photo';
 import { jakartaDate } from './attendance';
 import type {

@@ -65,9 +65,10 @@ export interface AttendanceRecord {
 }
 
 // Bukti kerja yang dilampirkan staf saat absen. File disimpan di
-// memori (belum ada backend): url adalah object URL untuk file yang
-// di-upload, atau data URL thumbnail untuk file yang sudah ada.
-// Nanti file di-upload ke Workers + R2.
+// server (tabel photos di D1): url adalah URL yang dilayani Worker
+// (/api/absen/foto/:key), atau data URL kalau datanya lokal (mode
+// dev tanpa backend). url null berarti file sudah diarsipkan ke
+// Google Drive (retensi 2 bulan).
 export interface EvidenceFile {
   id: string;
   name: string;
@@ -198,10 +199,10 @@ export function haversineDistanceMeters(
 
 // Bukti verifikasi satu kali absen: lokasi GPS + foto selfie.
 // Disimpan bersama catatan absen, dilihat Bos/Manager di halaman
-// Absensi. Selfie disimpan sebagai data URL JPEG yang diperkecil
-// (maks 640px), jadi fotonya tetap tampil setelah halaman
-// di-refresh. Nanti selfie di-upload ke Workers + R2, koordinat
-// dicatat di log.
+// Absensi. Selfie disimpan di D1 (base64 JPEG yang diperkecil,
+// maks 640px) dan dilayani Worker (/api/absen/foto/:key); selfieUrl
+// null berarti foto sudah diarsipkan ke Google Drive (retensi
+// 2 bulan).
 export interface CheckVerification {
   lat: number;
   lon: number;
@@ -239,11 +240,4 @@ export function shortDateID(dateStr: string): string {
 export function jakartaTime(): string {
   const jakarta = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
   return `${String(jakarta.getHours()).padStart(2, '0')}:${String(jakarta.getMinutes()).padStart(2, '0')}`;
-}
-
-// Absensi dimulai dari kosong: tidak ada catatan awal. Entri baru
-// ditambahkan saat karyawan absen lewat aplikasi (status pending,
-// menunggu persetujuan Bos), atau saat staf mengajukan Izin/Cuti.
-export function getAttendance(): AttendanceRecord[] {
-  return [];
 }
