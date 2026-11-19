@@ -127,9 +127,17 @@ aplikasi dipakai.
 
 ## Langkah 4: Perbarui URL Worker di aplikasi
 
-URL Worker berubah saat pindah akun, karena bagian belakang
-`workers.dev` mengikuti nama akun Cloudflare. Nama Worker-nya sama
-(`stok-sabun-palem`), tapi subdomainnya beda.
+API memakai domain custom `https://api.ices.my.id` (bukan
+`workers.dev`), didaftarkan lewat `routes` di `worker/wrangler.toml`.
+Alasan: ISP XL memblokir `*.workers.dev` di level DNS sejak
+19 Nov 2026, sehingga aplikasi tidak bisa mencapai API dari HP
+staff. URL `workers.dev` tetap aktif sebagai alamat langsung
+Worker, tapi aplikasi memakai domain custom ini.
+
+Saat pindah akun, domain custom perlu didaftarkan ulang: daftarkan
+`api.ices.my.id` ke Worker di akun perusahaan (zona ices.my.id
+harus tetap bisa diakses), atau ganti ke domain perusahaan dan
+ubah `routes` di `wrangler.toml` + `VITE_API_URL` di bawah.
 
 Ada dua tempat deploy aplikasi, keduanya perlu URL baru:
 
@@ -141,7 +149,7 @@ Ada dua tempat deploy aplikasi, keduanya perlu URL baru:
    laptop dengan URL baru:
 
 ```sh
-VITE_API_URL=https://stok-sabun-palem.<akun-baru>.workers.dev npm run build:pages
+VITE_API_URL=https://api.ices.my.id npm run build:pages
 npx wrangler pages deploy dist --project-name caturwangsa
 ```
 

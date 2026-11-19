@@ -33,7 +33,7 @@ flowchart TD
 
 URL live: aplikasi https://caturwangsa.ices.my.id/ (utama),
 https://caturwangsa.pages.dev/, https://zakyshadra.github.io/stok-caturwangsa/;
-Worker https://stok-sabun-palem.zakyshadra.workers.dev.
+Worker https://api.ices.my.id.
 
 ## 2. Kenapa stok di Spreadsheet, absensi di D1
 
@@ -173,7 +173,7 @@ Catatan desain:
 
 ## 5. Endpoint API Worker
 
-Base URL: https://stok-sabun-palem.zakyshadra.workers.dev
+Base URL: https://api.ices.my.id
 
 | Endpoint | Deskripsi |
 | --- | --- |

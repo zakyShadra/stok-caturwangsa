@@ -39,7 +39,7 @@ Satu-satunya variabel yang dipakai aplikasi:
 
 | Variabel | Isi | Kapan dipakai |
 | --- | --- | --- |
-| `VITE_API_URL` | URL Worker, misal `https://stok-sabun-palem.zakyshadra.workers.dev` | Build produksi (Pages + GitHub Pages) |
+| `VITE_API_URL` | URL Worker, misal `https://api.ices.my.id` | Build produksi (Pages + GitHub Pages) |
 
 Tanpa `VITE_API_URL`, aplikasi memakai data lokal: stok dari
 daftar statis di `src/lib/products.ts`, absensi dan karyawan di
@@ -68,7 +68,7 @@ npm run preview        # pratinjau build lokal
 Deploy ke Cloudflare Pages (manual, tidak ada integrasi Git):
 
 ```bash
-VITE_API_URL=https://stok-sabun-palem.zakyshadra.workers.dev npm run build:pages
+VITE_API_URL=https://api.ices.my.id npm run build:pages
 npx wrangler pages deploy dist --project-name caturwangsa
 ```
 

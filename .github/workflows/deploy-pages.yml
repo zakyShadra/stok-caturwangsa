@@ -29,7 +29,7 @@ jobs:
       - run: npm ci
       - run: npm run build
         env:
-          VITE_API_URL: https://stok-sabun-palem.zakyshadra.workers.dev
+          VITE_API_URL: https://api.ices.my.id
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

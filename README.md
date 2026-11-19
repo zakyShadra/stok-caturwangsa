@@ -28,7 +28,7 @@ layar satu tugas.
 | Aplikasi (utama) | https://caturwangsa.ices.my.id/ |
 | Aplikasi (cadangan) | https://caturwangsa.pages.dev/ |
 | Aplikasi (cadangan) | https://zakyshadra.github.io/stok-caturwangsa/ |
-| Backend (Worker) | https://stok-sabun-palem.zakyshadra.workers.dev |
+| Backend (Worker) | https://api.ices.my.id |
 
 Aplikasi bisa dipasang sebagai PWA (ikon di layar HP, buka tanpa
 browser). Status: **live**. Stok, absensi, karyawan, dan pemasaran
@@ -216,13 +216,13 @@ npm run preview
 
 Tanpa `VITE_API_URL`, aplikasi memakai data lokal (stok dari daftar
 statis, absensi dan karyawan di memori sesi). Dengan
-`VITE_API_URL=https://stok-sabun-palem.zakyshadra.workers.dev`,
+`VITE_API_URL=https://api.ices.my.id`,
 aplikasi tersambung ke backend live.
 
 Deploy ke Cloudflare Pages (manual, tidak ada integrasi Git):
 
 ```bash
-VITE_API_URL=https://stok-sabun-palem.zakyshadra.workers.dev npm run build:pages
+VITE_API_URL=https://api.ices.my.id npm run build:pages
 npx wrangler pages deploy dist --project-name caturwangsa
 ```
 
