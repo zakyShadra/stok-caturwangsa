@@ -206,15 +206,16 @@ export default function Home() {
   // dan Manager tidak terikat karyawan (employeeId null).
   // Flow hanya ditutup kalau penyimpanan berhasil; kalau gagal,
   // pesan error tampil di dalam flow dan pengguna bisa coba lagi.
-  const handleFlowComplete = async (v: CheckVerification): Promise<boolean> => {
+  const handleFlowComplete = async (v: CheckVerification): Promise<string | null> => {
     const employeeId = myEmployeeId;
-    const ok = flow === 'masuk'
-      ? await checkIn(v, employeeId)
-      : flow === 'pulang'
-        ? await checkOut(v, employeeId)
-        : false;
-    if (ok) setFlow(null);
-    return ok;
+    const err =
+      flow === 'masuk'
+        ? await checkIn(v, employeeId)
+        : flow === 'pulang'
+          ? await checkOut(v, employeeId)
+          : 'Alur absen tidak dikenal';
+    if (err === null) setFlow(null);
+    return err;
   };
 
   const checkInButtons = (

@@ -35,7 +35,7 @@ type Step =
 
 interface Props {
   type: 'masuk' | 'pulang';
-  onComplete: (v: CheckVerification) => Promise<boolean>;
+  onComplete: (v: CheckVerification) => Promise<string | null>;
   onCancel: () => void;
 }
 
@@ -56,9 +56,11 @@ function getPosition(): Promise<GeolocationPosition> {
 export default function CheckInFlow({ type, onComplete, onCancel }: Props) {
   const [step, setStep] = useState<Step>({ kind: 'locating' });
   const [saving, setSaving] = useState(false);
-  // Error penyimpanan pakai state lokal: error global bisa berisi
-  // error lama dari operasi lain yang tidak terkait.
-  const [saveFailed, setSaveFailed] = useState(false);
+  // Pesan error penyimpanan pakai state lokal: error global bisa
+  // berisi error lama dari operasi lain yang tidak terkait. Yang
+  // tampil adalah pesan asli dari server (misal "Sudah absen masuk
+  // hari ini"), bukan teks generik, supaya sebab gagalnya jelas.
+  const [saveFailed, setSaveFailed] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const title = type === 'masuk' ? 'Absen Masuk' : 'Absen Pulang';
   const { clearError } = useAttendanceState();
@@ -133,8 +135,8 @@ export default function CheckInFlow({ type, onComplete, onCancel }: Props) {
   const handleConfirm = async () => {
     if (step.kind !== 'preview' || saving) return;
     setSaving(true);
-    setSaveFailed(false);
-    const ok = await onComplete({
+    setSaveFailed(null);
+    const err = await onComplete({
       lat: step.lat,
       lon: step.lon,
       distanceMeters: step.distanceMeters,
@@ -144,7 +146,7 @@ export default function CheckInFlow({ type, onComplete, onCancel }: Props) {
       time: jakartaTime(),
     });
     setSaving(false);
-    if (!ok) setSaveFailed(true);
+    setSaveFailed(err);
   };
 
   const stepLabel =
@@ -276,7 +278,7 @@ export default function CheckInFlow({ type, onComplete, onCancel }: Props) {
             </p>
             {saveFailed ? (
               <p className="mt-4 rounded-button bg-error/10 px-4 py-3 text-center text-base font-bold text-error">
-                Gagal menyimpan absen. Periksa koneksi internet, lalu ketuk lagi.
+                {saveFailed}
               </p>
             ) : null}
             <div className="mt-6 space-y-3">

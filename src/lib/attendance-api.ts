@@ -68,10 +68,17 @@ const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\
 // ---- Sumber data jarak jauh (Cloudflare Workers + D1) ----
 
 async function remoteFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      ...init,
+      headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    });
+  } catch {
+    // fetch gagal total (tidak ada internet, server tidak terjangkau):
+    // bedakan dari error server supaya pesan di UI jujur.
+    throw new Error('Periksa koneksi internet, lalu coba lagi.');
+  }
   const data = (await res.json().catch(() => null)) as { error?: string } | T | null;
   if (!res.ok) {
     const message =

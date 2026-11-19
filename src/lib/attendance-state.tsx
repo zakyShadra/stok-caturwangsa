@@ -40,8 +40,11 @@ interface AttendanceStateValue {
   myStatus: 'Hadir' | null;
   // Izin/Cuti saya hari ini (yang belum ditolak), atau null.
   myLeave: 'Izin' | 'Cuti' | null;
-  checkIn: (v: CheckVerification, employeeId: number | null) => Promise<boolean>;
-  checkOut: (v: CheckVerification, employeeId: number | null) => Promise<boolean>;
+  // Mengembalikan null kalau berhasil, atau pesan error asli (dari
+  // server atau dari jaringan) kalau gagal, supaya UI bisa
+  // menampilkan sebab sebenarnya, bukan teks generik.
+  checkIn: (v: CheckVerification, employeeId: number | null) => Promise<string | null>;
+  checkOut: (v: CheckVerification, employeeId: number | null) => Promise<string | null>;
   evidenceByEmployee: Record<number, EvidenceFile[]>;
   verificationByRecord: Record<string, EmployeeVerification>;
   // Marker cek bukti kerja oleh Manager (kunci `${employeeId}:${date}`).
@@ -300,31 +303,32 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
   // (dengan selfie), lalu baca ulang bulan ini. Tanpa employeeId
   // (Bos/Manager): hanya simpan di perangkat.
   const checkIn = useCallback(
-    async (v: CheckVerification, employeeId: number | null): Promise<boolean> => {
+    async (v: CheckVerification, employeeId: number | null): Promise<string | null> => {
       const time = v.time || jakartaTime();
       const todayKey = jakartaDate(0);
       if (employeeId === null) {
         const next: SavedCheckIn = { date: todayKey, checkIn: time, checkOut: null };
         setSaved(next);
         saveCheckIn(checkInKeyFor(userEmail), next);
-        return true;
+        return null;
       }
       try {
         await attendanceApi.checkIn({ employeeId, date: todayKey, verification: { ...v, time } });
         await refreshMonth(todayKey.slice(0, 7));
         await refreshPending();
         setError(null);
-        return true;
+        return null;
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Gagal menyimpan absen masuk');
-        return false;
+        const message = e instanceof Error ? e.message : 'Gagal menyimpan absen masuk';
+        setError(message);
+        return message;
       }
     },
     [refreshMonth, refreshPending, userEmail],
   );
 
   const checkOut = useCallback(
-    async (v: CheckVerification, employeeId: number | null): Promise<boolean> => {
+    async (v: CheckVerification, employeeId: number | null): Promise<string | null> => {
       const time = v.time || jakartaTime();
       const todayKey = jakartaDate(0);
       if (employeeId === null) {
@@ -334,17 +338,18 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
           saveCheckIn(key, next);
           return next;
         });
-        return true;
+        return null;
       }
       try {
         await attendanceApi.checkOut({ employeeId, date: todayKey, verification: { ...v, time } });
         await refreshMonth(todayKey.slice(0, 7));
         await refreshPending();
         setError(null);
-        return true;
+        return null;
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Gagal menyimpan absen pulang');
-        return false;
+        const message = e instanceof Error ? e.message : 'Gagal menyimpan absen pulang';
+        setError(message);
+        return message;
       }
     },
     [refreshMonth, refreshPending, userEmail],
