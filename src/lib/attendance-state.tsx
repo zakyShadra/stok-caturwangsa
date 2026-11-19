@@ -38,6 +38,8 @@ interface AttendanceStateValue {
   myCheckIn: string | null;
   myCheckOut: string | null;
   myStatus: 'Hadir' | null;
+  // Izin/Cuti saya hari ini (yang belum ditolak), atau null.
+  myLeave: 'Izin' | 'Cuti' | null;
   checkIn: (v: CheckVerification, employeeId: number | null) => Promise<boolean>;
   checkOut: (v: CheckVerification, employeeId: number | null) => Promise<boolean>;
   evidenceByEmployee: Record<number, EvidenceFile[]>;
@@ -259,6 +261,8 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
   const myCheckIn = myEmployeeId !== null ? (myRecord?.checkIn ?? null) : saved.checkIn;
   const myCheckOut = myEmployeeId !== null ? (myRecord?.checkOut ?? null) : saved.checkOut;
   const myStatus: 'Hadir' | null = myCheckIn ? 'Hadir' : null;
+  const myLeave: 'Izin' | 'Cuti' | null =
+    myRecord && myRecord.status !== 'Hadir' ? myRecord.status : null;
 
   const requestLeave = useCallback(
     async (employeeId: number, date: string, type: 'Izin' | 'Cuti'): Promise<boolean> => {
@@ -404,6 +408,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       myCheckIn,
       myCheckOut,
       myStatus,
+      myLeave,
       checkIn,
       checkOut,
       evidenceByEmployee,
@@ -425,6 +430,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       myCheckIn,
       myCheckOut,
       myStatus,
+      myLeave,
       checkIn,
       checkOut,
       evidenceByEmployee,

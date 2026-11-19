@@ -35,7 +35,7 @@ type Step =
 
 interface Props {
   type: 'masuk' | 'pulang';
-  onComplete: (v: CheckVerification) => void;
+  onComplete: (v: CheckVerification) => Promise<boolean>;
   onCancel: () => void;
 }
 
@@ -55,11 +55,19 @@ function getPosition(): Promise<GeolocationPosition> {
 
 export default function CheckInFlow({ type, onComplete, onCancel }: Props) {
   const [step, setStep] = useState<Step>({ kind: 'locating' });
+  const [saving, setSaving] = useState(false);
+  // Error penyimpanan pakai state lokal: error global bisa berisi
+  // error lama dari operasi lain yang tidak terkait.
+  const [saveFailed, setSaveFailed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const title = type === 'masuk' ? 'Absen Masuk' : 'Absen Pulang';
-  // Pesan error dari penyimpanan absen (misal internet putus):
-  // tampil di langkah preview supaya pengguna bisa coba lagi.
-  const { error: saveError } = useAttendanceState();
+  const { clearError } = useAttendanceState();
+
+  // Bersihkan error global saat alur dibuka, supaya error lama
+  // tidak ikut tampil di belakang alur ini.
+  useEffect(() => {
+    clearError();
+  }, [clearError]);
 
   const checkLocation = useCallback(() => {
     setStep({ kind: 'locating' });
@@ -122,9 +130,11 @@ export default function CheckInFlow({ type, onComplete, onCancel }: Props) {
     setStep({ kind: 'selfie', lat: step.lat, lon: step.lon, distanceMeters: step.distanceMeters, accuracyMeters: step.accuracyMeters });
   };
 
-  const handleConfirm = () => {
-    if (step.kind !== 'preview') return;
-    onComplete({
+  const handleConfirm = async () => {
+    if (step.kind !== 'preview' || saving) return;
+    setSaving(true);
+    setSaveFailed(false);
+    const ok = await onComplete({
       lat: step.lat,
       lon: step.lon,
       distanceMeters: step.distanceMeters,
@@ -133,6 +143,8 @@ export default function CheckInFlow({ type, onComplete, onCancel }: Props) {
       selfieName: step.name,
       time: jakartaTime(),
     });
+    setSaving(false);
+    if (!ok) setSaveFailed(true);
   };
 
   const stepLabel =
@@ -262,14 +274,14 @@ export default function CheckInFlow({ type, onComplete, onCancel }: Props) {
             <p className="mt-4 text-center text-lg text-ink">
               Apakah foto ini sudah benar?
             </p>
-            {saveError ? (
+            {saveFailed ? (
               <p className="mt-4 rounded-button bg-error/10 px-4 py-3 text-center text-base font-bold text-error">
-                {saveError} Periksa koneksi internet, lalu ketuk lagi.
+                Gagal menyimpan absen. Periksa koneksi internet, lalu ketuk lagi.
               </p>
             ) : null}
             <div className="mt-6 space-y-3">
-              <BigButton tone="primary" full onClick={handleConfirm}>
-                Ini Foto Saya
+              <BigButton tone="primary" full onClick={handleConfirm} disabled={saving}>
+                {saving ? 'Menyimpan...' : 'Ini Foto Saya'}
               </BigButton>
               <BigButton tone="secondary" full onClick={handleRetake}>
                 Foto Ulang

@@ -131,7 +131,7 @@ export default function Home() {
   // (supaya tombol upload bukti kerja tahu saya sudah absen).
   // records dipakai bersama: absen yang dicatat lewat aplikasi
   // langsung muncul di angka beranda dan daftar absensi.
-  const { records, myCheckIn, myCheckOut, myStatus, checkIn, checkOut, evidenceByEmployee, error: attendanceError, clearError } = useAttendanceState();
+  const { records, myCheckIn, myCheckOut, myStatus, myLeave, checkIn, checkOut, evidenceByEmployee, error: attendanceError, clearError } = useAttendanceState();
 
   // Flow absen (cek lokasi GPS lalu foto selfie). null = tidak jalan.
   const [flow, setFlow] = useState<'masuk' | 'pulang' | null>(null);
@@ -206,7 +206,7 @@ export default function Home() {
   // dan Manager tidak terikat karyawan (employeeId null).
   // Flow hanya ditutup kalau penyimpanan berhasil; kalau gagal,
   // pesan error tampil di dalam flow dan pengguna bisa coba lagi.
-  const handleFlowComplete = async (v: CheckVerification) => {
+  const handleFlowComplete = async (v: CheckVerification): Promise<boolean> => {
     const employeeId = myEmployeeId;
     const ok = flow === 'masuk'
       ? await checkIn(v, employeeId)
@@ -214,6 +214,7 @@ export default function Home() {
         ? await checkOut(v, employeeId)
         : false;
     if (ok) setFlow(null);
+    return ok;
   };
 
   const checkInButtons = (
@@ -283,12 +284,16 @@ export default function Home() {
               </p>
             ) : null}
             {myStatusLine}
-            {!myCheckIn ? (
+            {myLeave ? (
+              <p className="mt-4 text-lg font-bold text-info-ink">
+                Anda {myLeave} hari ini.
+              </p>
+            ) : !myCheckIn ? (
               <p className="mt-4 text-lg font-bold text-warning-ink">
                 Anda belum absen masuk.
               </p>
             ) : null}
-            {checkInButtons}
+            {myLeave ? null : checkInButtons}
             {myCheckIn ? (
               <p className="mt-4 text-base text-ink-muted">
                 Jangan lupa lampirkan bukti kerja hari ini di{' '}
@@ -505,6 +510,10 @@ export default function Home() {
                 <p className="mt-1 text-base text-ink">
                   Masuk pukul{' '}<span className="font-bold text-ink tabular-nums">{myCheckIn}</span>{myStatus ? <span className="ml-2"><AttendanceBadge status={myStatus} /></span> : null}{myCheckOut ? <span>, pulang pukul <span className="font-bold text-ink tabular-nums">{myCheckOut}</span></span> : null}
                 </p>
+              ) : myLeave ? (
+                <p className="mt-1 text-base font-bold text-info-ink">
+                  Anda {myLeave} hari ini.
+                </p>
               ) : (
                 <p className="mt-1 text-base font-bold text-warning-ink">
                   Anda belum absen masuk.
@@ -515,7 +524,7 @@ export default function Home() {
                   Absen Anda hari ini ditolak Bos. Silakan absen ulang.
                 </p>
               ) : null}
-              {checkInButtons}
+              {myLeave ? null : checkInButtons}
             </div>
           ) : null}
 

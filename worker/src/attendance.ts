@@ -31,7 +31,8 @@
 //   absen masuk baru menggantikan yang ditolak, status kembali
 //   pending). Izin/Cuti tidak bisa diajukan kalau tanggal itu sudah
 //   ada catatan, dan sebaliknya.
-// - Absen pulang butuh catatan absen masuk yang belum ditolak.
+// - Absen pulang butuh catatan absen masuk yang belum ditolak, dan
+//   jam pulang harus setelah jam masuk hari itu.
 // - Tanggal check-in, check-out, dan bukti kerja harus hari ini
 //   (WIB); tanggal lain ditolak. Bukti kerja juga butuh catatan
 //   absen di tanggal itu (tidak ada bukti yatim). Izin/Cuti boleh
@@ -518,6 +519,11 @@ attendanceRoutes.post('/check-out', async (c) => {
     }
     if (existing.check_out !== null) {
       return jsonError(c, 400, 'Sudah absen pulang hari ini');
+    }
+    // Jam HH:MM nol di depan, jadi perbandingan string sama dengan
+    // perbandingan waktu.
+    if (time <= existing.check_in) {
+      return jsonError(c, 400, 'Jam pulang harus setelah jam masuk');
     }
     const key = `selfie-${employeeId}-${date}-pulang-${randomSuffix()}`;
     await storePhoto(db, key, photo.mime, photo.base64);
