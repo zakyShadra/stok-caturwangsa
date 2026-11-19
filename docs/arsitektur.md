@@ -162,7 +162,12 @@ Catatan desain:
   manifest tertulis di `photo_archive` (lihat
   `worker/src/archive.ts`). Catatan absennya tetap ada; UI
   menampilkan "Foto sudah diarsipkan ke Drive" untuk foto yang
-  sudah pindah.
+  sudah pindah. Upload Drive memakai OAuth akun pengguna (refresh
+  token, secrets `DRIVE_CLIENT_ID`, `DRIVE_CLIENT_SECRET`,
+  `DRIVE_REFRESH_TOKEN`), BUKAN service account: service account
+  tidak punya kuota storage Drive sehingga upload file selalu
+  ditolak Google dengan 403 (ditemukan di tes live 19 Nov 2026).
+  Sheets tetap memakai service account.
 - **Seed employees.** Saat tabel employees kosong (pertama kali),
   GET /api/karyawan mengisinya dari 5 karyawan awal: Putra (1),
   Dyas Nakata (2, capability `view-marketing`), Pak Andy (3),
