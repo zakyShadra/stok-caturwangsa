@@ -52,9 +52,19 @@ export default function Employees() {
   };
 
   const handleDelete = async (id: number, name: string) => {
-    if (!window.confirm(`Hapus ${name} dari daftar karyawan?`)) return;
+    if (
+      !window.confirm(
+        `Hapus ${name} dari daftar karyawan? Riwayat absennya akan kehilangan nama (tampil sebagai "-") dan tidak bisa dikembalikan. Kalau karyawan ini sudah tidak bekerja, lebih baik Nonaktifkan saja.`,
+      )
+    )
+      return;
     const ok = await removeEmployee(id);
     if (ok) setNote(`${name} sudah dihapus.`);
+  };
+
+  const handleToggleActive = async (emp: Employee) => {
+    const ok = await updateEmployee(emp.id, { active: !emp.active });
+    if (ok) setNote(`${emp.name} sudah ${emp.active ? 'dinonaktifkan' : 'diaktifkan kembali'}.`);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -238,6 +248,13 @@ export default function Employees() {
                   className="btn-press flex min-h-[48px] flex-1 items-center justify-center rounded-button bg-primary-soft/60 text-base font-bold text-primary-deep"
                 >
                   Ubah
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleToggleActive(e)}
+                  className="btn-press flex min-h-[48px] flex-1 items-center justify-center rounded-button bg-info/10 text-base font-bold text-info-ink"
+                >
+                  {e.active ? 'Nonaktifkan' : 'Aktifkan'}
                 </button>
                 <button
                   type="button"

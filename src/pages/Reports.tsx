@@ -9,6 +9,15 @@ import { useAttendanceState } from '../lib/attendance-state';
 import { useEmployees } from '../lib/employees';
 import { BigButton, PageHeader } from '../components/ui';
 
+// Satu field CSV: selalu dikutip, kutip di dalam digandakan.
+// Nilai yang diawali = + - @ diberi apostrof di depan supaya Excel
+// tidak membacanya sebagai formula.
+function csvField(value: string | number): string {
+  if (typeof value === 'number') return String(value);
+  const safe = /^[=+\-@]/.test(value) ? `'${value}` : value;
+  return `"${safe.replace(/"/g, '""')}"`;
+}
+
 export default function Reports() {
   const [from, setFrom] = useState(jakartaDate(0));
   const [to, setTo] = useState(jakartaDate(0));
@@ -66,11 +75,18 @@ export default function Reports() {
   );
 
   const downloadCSV = () => {
-    const header = 'Nama,Divisi,Hadir,Izin/Cuti,Menunggu Persetujuan,Total Hari';
-    const lines = rows.map(
-      (r) => `${r.employee.name},${r.employee.division},${r.hadir},${r.izin},${r.pending},${r.total}`,
+    const header = ['Nama', 'Divisi', 'Hadir', 'Izin/Cuti', 'Menunggu Persetujuan', 'Total Hari']
+      .map(csvField)
+      .join(',');
+    const lines = rows.map((r) =>
+      [r.employee.name, r.employee.division, r.hadir, r.izin, r.pending, r.total]
+        .map(csvField)
+        .join(','),
     );
-    const csv = [header, ...lines, `TOTAL,,${totals.hadir},${totals.izin},${totals.pending},${totals.total}`].join('\n');
+    const total = ['TOTAL', '', totals.hadir, totals.izin, totals.pending, totals.total]
+      .map(csvField)
+      .join(',');
+    const csv = [header, ...lines, total].join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

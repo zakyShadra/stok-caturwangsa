@@ -162,7 +162,7 @@ export default function Home() {
   const checkedInIds = new Set(
     todayRecords.filter((r) => r.approval !== 'rejected').map((r) => r.employeeId),
   );
-  const belumAbsen = employees.filter((e) => !checkedInIds.has(e.id));
+  const belumAbsen = employees.filter((e) => e.active && !checkedInIds.has(e.id));
 
   const employeeName = (id: number) => employees.find((e) => e.id === id)?.name ?? '-';
   const employeeDivision = (id: number) => employees.find((e) => e.id === id)?.division ?? '-';

@@ -16,8 +16,8 @@
 // terhapus (tidak ada foreign key); nama karyawan di rekap lama
 // tampil sebagai '-' (lihat employeeName di aplikasi). Menghapus
 // karyawan yang masih punya catatan absen sebaiknya dihindari;
-// pakai active=false kalau suatu saat dibutuhkan (saat ini form
-// belum punya tombol nonaktifkan).
+// pakai tombol Nonaktifkan di form (active=false) supaya riwayatnya
+// tetap terbaca namanya.
 import { Hono } from 'hono';
 import type { AttendanceEnv } from './attendance';
 
