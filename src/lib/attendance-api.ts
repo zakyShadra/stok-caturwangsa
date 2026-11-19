@@ -9,6 +9,7 @@
 //
 // Endpoint Workers (lihat worker/src/attendance.ts):
 //   GET    /api/absen?from&to     -> catatan + verifikasi + bukti + reviews
+//   GET    /api/absen/pending     -> semua catatan pending, semua tanggal
 //   POST   /api/absen/check-in    -> absen masuk + selfie
 //   POST   /api/absen/check-out   -> absen pulang + selfie
 //   POST   /api/absen/approval    -> Bos Setujui/Tolak
@@ -53,6 +54,7 @@ export interface CheckInput {
 
 export interface AttendanceApi {
   list(from: string, to: string): Promise<AttendanceBundle>;
+  listPending(): Promise<AttendanceBundle>;
   checkIn(input: CheckInput): Promise<void>;
   checkOut(input: CheckInput): Promise<void>;
   setApproval(employeeId: number, date: string, approval: ApprovalStatus): Promise<void>;
@@ -100,38 +102,51 @@ interface RemoteReview {
   reviewedAt: string;
 }
 
+// Bentuk respons GET /api/absen dan GET /api/absen/pending sama,
+// jadi parsingnya dipakai bersama.
+function parseBundle(data: { records: RemoteRecord[]; reviews?: RemoteReview[] }): AttendanceBundle {
+  const records: AttendanceRecord[] = [];
+  const verificationByRecord: Record<string, EmployeeVerification> = {};
+  const evidenceByEmployee: Record<number, EvidenceFile[]> = {};
+  const reviewsByRecord: Record<string, EvidenceReview> = {};
+  for (const r of data.records) {
+    records.push({
+      employeeId: r.employeeId,
+      date: r.date,
+      checkIn: r.checkIn,
+      checkOut: r.checkOut,
+      status: r.status,
+      approval: r.approval,
+    });
+    verificationByRecord[verificationKey(r.employeeId, r.date)] = {
+      ...(r.verification.masuk ? { masuk: r.verification.masuk } : {}),
+      ...(r.verification.pulang ? { pulang: r.verification.pulang } : {}),
+    };
+    const dated = r.evidence.map((e) => ({ ...e, date: r.date }));
+    evidenceByEmployee[r.employeeId] = [...(evidenceByEmployee[r.employeeId] ?? []), ...dated];
+  }
+  for (const r of data.reviews ?? []) {
+    reviewsByRecord[verificationKey(r.employeeId, r.date)] = {
+      reviewedBy: r.reviewedBy,
+      reviewedAt: r.reviewedAt,
+    };
+  }
+  return { records, verificationByRecord, evidenceByEmployee, reviewsByRecord };
+}
+
 const remoteApi: AttendanceApi = {
   async list(from: string, to: string): Promise<AttendanceBundle> {
     const data = await remoteFetch<{ records: RemoteRecord[]; reviews?: RemoteReview[] }>(
       `/api/absen?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
     );
-    const records: AttendanceRecord[] = [];
-    const verificationByRecord: Record<string, EmployeeVerification> = {};
-    const evidenceByEmployee: Record<number, EvidenceFile[]> = {};
-    const reviewsByRecord: Record<string, EvidenceReview> = {};
-    for (const r of data.records) {
-      records.push({
-        employeeId: r.employeeId,
-        date: r.date,
-        checkIn: r.checkIn,
-        checkOut: r.checkOut,
-        status: r.status,
-        approval: r.approval,
-      });
-      verificationByRecord[verificationKey(r.employeeId, r.date)] = {
-        ...(r.verification.masuk ? { masuk: r.verification.masuk } : {}),
-        ...(r.verification.pulang ? { pulang: r.verification.pulang } : {}),
-      };
-      const dated = r.evidence.map((e) => ({ ...e, date: r.date }));
-      evidenceByEmployee[r.employeeId] = [...(evidenceByEmployee[r.employeeId] ?? []), ...dated];
-    }
-    for (const r of data.reviews ?? []) {
-      reviewsByRecord[verificationKey(r.employeeId, r.date)] = {
-        reviewedBy: r.reviewedBy,
-        reviewedAt: r.reviewedAt,
-      };
-    }
-    return { records, verificationByRecord, evidenceByEmployee, reviewsByRecord };
+    return parseBundle(data);
+  },
+
+  async listPending(): Promise<AttendanceBundle> {
+    const data = await remoteFetch<{ records: RemoteRecord[]; reviews?: RemoteReview[] }>(
+      '/api/absen/pending',
+    );
+    return parseBundle(data);
   },
 
   async checkIn(input: CheckInput): Promise<void> {
@@ -337,6 +352,29 @@ const localApi: AttendanceApi = {
       evidenceByEmployee: loadLocalEvidence(),
       reviewsByRecord,
     };
+  },
+
+  // Mode lokal hanya menyimpan bulan berjalan (lihat
+  // loadLocalRecords), jadi pending bulan lalu tetap tidak terlihat
+  // di sini; itu batasan jalur dev, bukan jalur produksi.
+  async listPending(): Promise<AttendanceBundle> {
+    const bundle = await localApi.list('0000-01-01', '9999-12-31');
+    const pending = bundle.records.filter((r) => r.approval === 'pending');
+    const keys = new Set(pending.map((r) => verificationKey(r.employeeId, r.date)));
+    const verificationByRecord: Record<string, EmployeeVerification> = {};
+    for (const [k, v] of Object.entries(bundle.verificationByRecord)) {
+      if (keys.has(k)) verificationByRecord[k] = v;
+    }
+    const evidenceByEmployee: Record<number, EvidenceFile[]> = {};
+    for (const [id, list] of Object.entries(bundle.evidenceByEmployee)) {
+      const kept = list.filter((f) => f.date && keys.has(verificationKey(Number(id), f.date)));
+      if (kept.length > 0) evidenceByEmployee[Number(id)] = kept;
+    }
+    const reviewsByRecord: Record<string, EvidenceReview> = {};
+    for (const [k, v] of Object.entries(bundle.reviewsByRecord)) {
+      if (keys.has(k)) reviewsByRecord[k] = v;
+    }
+    return { records: pending, verificationByRecord, evidenceByEmployee, reviewsByRecord };
   },
 
   async checkIn(input: CheckInput): Promise<void> {

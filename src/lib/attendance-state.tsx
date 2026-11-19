@@ -192,10 +192,40 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     [refreshMonth],
   );
 
+  // Muat semua catatan pending (semua tanggal) dan gabungkan ke
+  // state. Antrean + banner pending memakai data ini, jadi pending
+  // bulan lalu tidak hilang dari pandangan. Tidak pernah throw:
+  // antrean yang gagal dimuat tidak boleh merusak pemuatan utama.
+  const refreshPending = useCallback(async () => {
+    try {
+      const bundle = await attendanceApi.listPending();
+      setRecords((prev) => {
+        const others = prev.filter((r) => r.approval !== 'pending');
+        return [...others, ...bundle.records];
+      });
+      setVerificationByRecord((prev) => ({ ...prev, ...bundle.verificationByRecord }));
+      setEvidenceByEmployee((prev) => {
+        const next = { ...prev };
+        for (const [id, list] of Object.entries(bundle.evidenceByEmployee)) {
+          const existing = next[Number(id)] ?? [];
+          const ids = new Set(existing.map((f) => f.id));
+          next[Number(id)] = [...existing, ...list.filter((f) => !ids.has(f.id))];
+        }
+        return next;
+      });
+      setReviewsByRecord((prev) => ({ ...prev, ...bundle.reviewsByRecord }));
+    } catch (e) {
+      console.error('Gagal memuat antrean pending:', e instanceof Error ? e.message : e);
+    }
+  }, []);
+
   // Muat bulan berjalan saat aplikasi dibuka.
   useEffect(() => {
     let cancelled = false;
     refreshMonth(jakartaDate(0).slice(0, 7))
+      .then(() => {
+        if (!cancelled) return refreshPending();
+      })
       .catch((e: unknown) => {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Gagal memuat absensi');
       })
@@ -205,16 +235,17 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [refreshMonth]);
+  }, [refreshMonth, refreshPending]);
 
   const refresh = useCallback(async () => {
     try {
       await refreshMonth(jakartaDate(0).slice(0, 7));
+      await refreshPending();
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Gagal memuat absensi');
     }
-  }, [refreshMonth]);
+  }, [refreshMonth, refreshPending]);
 
   // Status absen saya hari ini. Akun yang terikat karyawan (Staff,
   // Admin) membaca dari catatan server (catatan yang ditolak Bos
@@ -234,6 +265,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       try {
         await attendanceApi.requestLeave(employeeId, date, type);
         await refreshMonth(date.slice(0, 7));
+        await refreshPending();
         setError(null);
         return true;
       } catch (e) {
@@ -241,7 +273,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
         return false;
       }
     },
-    [refreshMonth],
+    [refreshMonth, refreshPending],
   );
 
   const setApproval = useCallback(
@@ -249,6 +281,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       try {
         await attendanceApi.setApproval(employeeId, date, approval);
         await refreshMonth(date.slice(0, 7));
+        await refreshPending();
         setError(null);
         return true;
       } catch (e) {
@@ -256,7 +289,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
         return false;
       }
     },
-    [refreshMonth],
+    [refreshMonth, refreshPending],
   );
 
   // Absen masuk. Akun yang terikat karyawan: catat ke server
@@ -275,6 +308,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       try {
         await attendanceApi.checkIn({ employeeId, date: todayKey, verification: { ...v, time } });
         await refreshMonth(todayKey.slice(0, 7));
+        await refreshPending();
         setError(null);
         return true;
       } catch (e) {
@@ -282,7 +316,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
         return false;
       }
     },
-    [refreshMonth, userEmail],
+    [refreshMonth, refreshPending, userEmail],
   );
 
   const checkOut = useCallback(
@@ -301,6 +335,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       try {
         await attendanceApi.checkOut({ employeeId, date: todayKey, verification: { ...v, time } });
         await refreshMonth(todayKey.slice(0, 7));
+        await refreshPending();
         setError(null);
         return true;
       } catch (e) {
@@ -308,7 +343,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
         return false;
       }
     },
-    [refreshMonth, userEmail],
+    [refreshMonth, refreshPending, userEmail],
   );
 
   const addEvidence = useCallback(

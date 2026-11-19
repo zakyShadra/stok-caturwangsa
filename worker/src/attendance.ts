@@ -10,6 +10,7 @@
 //   GET    /api/absen?from=YYYY-MM-DD&to=YYYY-MM-DD
 //          -> catatan absen + verifikasi (selfie) + bukti kerja
 //             + reviews (marker cek bukti kerja oleh Manager)
+//   GET    /api/absen/pending -> semua catatan pending, semua tanggal
 //   POST   /api/absen/check-in   {employeeId, date, time, lat, lon,
 //          distanceMeters, accuracy, selfieName, selfieData}
 //   POST   /api/absen/check-out  (bentuk sama seperti check-in)
@@ -239,6 +240,54 @@ function toRecordJson(
 
 export const attendanceRoutes = new Hono<{ Bindings: AttendanceEnv }>();
 
+// Muat verifikasi + bukti + review untuk daftar catatan, lalu bentuk
+// respons yang sama seperti GET /api/absen. Dipakai GET / dan GET
+// /pending supaya bentuknya tidak bisa berbeda.
+async function loadBundle(
+  c: { req: { url: string } },
+  db: D1Database,
+  rows: AttendanceRow[],
+  start: string,
+  end: string,
+) {
+  const ids = rows.map((r) => r.id);
+  let verifications: VerificationRow[] = [];
+  if (ids.length > 0) {
+    const placeholders = ids.map(() => '?').join(',');
+    const v = await db
+      .prepare(`SELECT * FROM verification WHERE attendance_id IN (${placeholders})`)
+      .bind(...ids)
+      .all<VerificationRow>();
+    verifications = v.results ?? [];
+  }
+  const e = await db
+    .prepare('SELECT * FROM evidence WHERE date >= ? AND date <= ? ORDER BY id ASC')
+    .bind(start, end)
+    .all<EvidenceRow>();
+  const evidence = e.results ?? [];
+  const rv = await db
+    .prepare('SELECT * FROM evidence_reviews WHERE date >= ? AND date <= ?')
+    .bind(start, end)
+    .all<EvidenceReviewRow>();
+  const reviews = rv.results ?? [];
+  return {
+    records: rows.map((r) =>
+      toRecordJson(
+        c,
+        r,
+        verifications.filter((v) => v.attendance_id === r.id),
+        evidence.filter((x) => x.employee_id === r.employee_id && x.date === r.date),
+      ),
+    ),
+    reviews: reviews.map((r) => ({
+      employeeId: r.employee_id,
+      date: r.date,
+      reviewedBy: r.reviewed_by,
+      reviewedAt: r.reviewed_at,
+    })),
+  };
+}
+
 // GET /api/absen?from&to: catatan dalam rentang tanggal, masing-masing
 // lengkap dengan verifikasi dan bukti kerja. Tanpa parameter, dipakai
 // bulan berjalan.
@@ -257,46 +306,31 @@ attendanceRoutes.get('/', async (c) => {
       .prepare('SELECT * FROM attendance WHERE date >= ? AND date <= ? ORDER BY date ASC, employee_id ASC')
       .bind(start, end)
       .all<AttendanceRow>();
-    const ids = (rows.results ?? []).map((r) => r.id);
-    let verifications: VerificationRow[] = [];
-    let evidence: EvidenceRow[] = [];
-    if (ids.length > 0) {
-      const placeholders = ids.map(() => '?').join(',');
-      const v = await db
-        .prepare(`SELECT * FROM verification WHERE attendance_id IN (${placeholders})`)
-        .bind(...ids)
-        .all<VerificationRow>();
-      verifications = v.results ?? [];
-    }
-    const e = await db
-      .prepare('SELECT * FROM evidence WHERE date >= ? AND date <= ? ORDER BY id ASC')
-      .bind(start, end)
-      .all<EvidenceRow>();
-    evidence = e.results ?? [];
-    const rv = await db
-      .prepare('SELECT * FROM evidence_reviews WHERE date >= ? AND date <= ?')
-      .bind(start, end)
-      .all<EvidenceReviewRow>();
-    const reviews = rv.results ?? [];
-    return c.json({
-      records: (rows.results ?? []).map((r) =>
-        toRecordJson(
-          c,
-          r,
-          verifications.filter((v) => v.attendance_id === r.id),
-          evidence.filter((x) => x.employee_id === r.employee_id && x.date === r.date),
-        ),
-      ),
-      reviews: reviews.map((r) => ({
-        employeeId: r.employee_id,
-        date: r.date,
-        reviewedBy: r.reviewed_by,
-        reviewedAt: r.reviewed_at,
-      })),
-    });
+    return c.json(await loadBundle(c, db, rows.results ?? [], start, end));
   } catch (e) {
     console.error('GET /api/absen gagal:', e instanceof Error ? e.message : e);
     return jsonError(c, 502, 'Gagal membaca absensi dari database');
+  }
+});
+
+// GET /api/absen/pending: semua catatan pending, semua tanggal,
+// tanpa batas rentang. Dipakai antrean persetujuan + banner pending
+// di Beranda, supaya pending bulan lalu tidak hilang dari pandangan.
+attendanceRoutes.get('/pending', async (c) => {
+  const db = c.env.sabun_palem_absen;
+  try {
+    const rows = await db
+      .prepare("SELECT * FROM attendance WHERE approval = 'pending' ORDER BY date ASC, employee_id ASC")
+      .all<AttendanceRow>();
+    const list = rows.results ?? [];
+    if (list.length === 0) return c.json({ records: [], reviews: [] });
+    const dates = list.map((r) => r.date);
+    const start = dates.reduce((a, b) => (a < b ? a : b));
+    const end = dates.reduce((a, b) => (a > b ? a : b));
+    return c.json(await loadBundle(c, db, list, start, end));
+  } catch (e) {
+    console.error('GET /api/absen/pending gagal:', e instanceof Error ? e.message : e);
+    return jsonError(c, 502, 'Gagal membaca antrean pending dari database');
   }
 });
 
