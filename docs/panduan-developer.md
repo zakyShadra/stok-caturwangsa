@@ -231,6 +231,13 @@ Divisi hanya label, tidak mengubah izin apa pun.
 tab bulan baru otomatis. Kalau perlu membuat manual, panggil
 `POST /api/monthly/create` dengan body `{"month": "YYYY-MM"}`.
 
+**Membangun ulang tab bulanan.** Untuk migrasi tab lama ke format
+baru, panggil `POST /api/monthly/rebuild` dengan body
+`{"month": "YYYY-MM"}` (hapus tab lama, buat skeleton baru,
+backfill grup tanggal dari Log). Untuk menambah satu grup tanggal
+tanpa scan, panggil `POST /api/monthly/ensure` dengan body
+`{"date": "YYYY-MM-DD"}`.
+
 **Memindahkan backend ke akun perusahaan.** Lihat
 [docs/migrasi-akun.md](migrasi-akun.md). Jangan lupa D1: database
 baru harus dibuat di akun perusahaan dan skema diterapkan ulang,
@@ -246,7 +253,7 @@ karena D1 tidak ikut pindah bersama kode Worker.
 - **Sinkronisasi Sheet bukan realtime.** Stok di aplikasi dibaca
   dari Log lewat Worker; perubahan harga di Sheet tidak langsung
   tampil di aplikasi. Ubah harga lewat aplikasi, bukan di Sheet.
-- **Tab bulanan hanya menampilkan stok akhir hari.** Transaksi
+- **Tab bulanan menampilkan snapshot stok per tanggal.** Transaksi
   masuk dan keluar di hari yang sama saling meniadakan di tab
   itu; detailnya ada di tab Log Transaksi.
 - **Foto disimpan di D1 sebagai base64.** R2 tidak dipakai karena

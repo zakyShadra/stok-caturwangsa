@@ -72,22 +72,38 @@ pemisah `;`), zona waktu Asia/Jakarta.
 
 ### 3.2 Tab bulanan
 
-Satu tab per bulan, berisi stok akhir tiap hari dalam 4 blok
-berurutan: TOTAL SEMUA GUDANG, GUDANG KLINIK, GUDANG KANTOR,
-KANTOR. Tiap blok: header berwarna + baris header (Produk, 1..31,
-Total) + 24 baris produk. Sel berisi stok akhir hari itu (tanggal
-yang belum lewat dibiarkan kosong); kolom Total berisi stok akhir
-terbaru. Semua sel memakai SUMIFS dari Log Transaksi. Total =
-jumlah ketiga blok gudang (diverifikasi 456 sel, 0 beda).
+Satu tab per bulan, mengikuti persis format tab opname asli
+perusahaan (misal "Juli 2026"): baris 1 header tanggal per grup
+("09 Juli 2026"), baris 2 kosong, baris 3 header lokasi (Gudang
+Klinik, Gudang Kantor, Kantor, Total Barang), baris 4 sub-header
+(No, Nama Item, lalu per grup: Unit, Satuan, Unit, Satuan, Unit,
+Satuan, Jml, Unit, Keterangan), baris 5-40 berisi 36 produk
+dengan nama persis tab September 2026. Nilai tiap grup adalah
+snapshot stok akhir hari itu per lokasi (SUMIFS kumulatif dari
+Log Transaksi); Total Barang = jumlah ketiga lokasi. Kolom
+Satuan memakai singkatan perusahaan (Jrg, Ball, Dus, Pcs,
+Toples) dan "-" kalau stoknya 0.
 
-Batas yang perlu diketahui: tab bulanan hanya menampilkan stok
-akhir hari, tidak bisa memisahkan Masuk vs Keluar (transaksi masuk
-dan keluar di hari yang sama saling meniadakan). Detailnya ada di
-Log Transaksi.
+Satu-satunya perbedaan dari format asli: grup tanggal tidak
+dicetak semua di awal. Tab baru dibuat sebagai skeleton (tanpa
+grup tanggal); grup ditambahkan otomatis saat ada pergerakan
+(scan) di tanggal itu. Nama produk di tab berbeda dari nama di
+Log (misal tab "Palem Dwl Jerigen" = Log "DWL Palem Jerigen"),
+pemetaannya ada di MONTHLY_ROWS (worker/src/monthly.ts). 19
+produk terpetakan; 3 ambigu (Bs powder 1kg, Bs Powder Karung,
+Jelly Toples) dan 14 tanpa data di Log dibiarkan kosong; 3
+produk Log (Bomber Matic, Clean Up Dus, FK110) tidak punya
+baris di tab bulanan.
+
+Batas yang perlu diketahui: tab bulanan menampilkan snapshot
+stok per tanggal, tidak bisa memisahkan Masuk vs Keluar
+(transaksi masuk dan keluar di hari yang sama saling
+meniadakan). Detailnya ada di Log Transaksi.
 
 Tab bulan baru dibuat otomatis oleh cron Worker (`0 17 1 * *`,
 artinya jam 00:00 WIB tanggal 1). Kalau tab bulan itu sudah ada,
-cron melewatinya.
+cron melewatinya. Tab lama bisa dibangun ulang ke format baru
+dengan `POST /api/monthly/rebuild`.
 
 ### 3.3 Sheet pemasaran (hanya dibaca)
 
@@ -156,6 +172,8 @@ Base URL: https://stok-sabun-palem.zakyshadra.workers.dev
 | POST /api/scan/undo | Batalkan transaksi terakhir |
 | GET /api/monthly?month=YYYY-MM | Rekap per hari per lokasi (dari Log) |
 | POST /api/monthly/create | Buat tab bulanan baru |
+| POST /api/monthly/rebuild | Bangun ulang tab bulanan dari Log (migrasi format) |
+| POST /api/monthly/ensure | Tambah grup satu tanggal ke tab bulanan |
 | GET /api/marketing | Agregat penjualan offline (dari sheet Analisis) |
 | GET /api/absen?month=YYYY-MM | Daftar absen + review (dari D1) |
 | POST /api/absen/check-in | Absen masuk (GPS + selfie) |

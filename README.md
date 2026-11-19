@@ -179,8 +179,11 @@ sama seperti habis scan. 4 produk belum punya barcode: BS Powder
 - **Sheet:** aplikasi menulis ke salinan dev "SO Detail - COPY DEV
   (Stok Sabun Palem)". Sheet asli perusahaan TIDAK PERNAH diubah.
   Tab bulanan (misal "November 2026") dibuat otomatis tiap tanggal
-  1 jam 00:00 WIB, berisi stok akhir tiap hari dalam 4 blok:
-  Total, Gudang Klinik, Gudang Kantor, Kantor.
+  1 jam 00:00 WIB sebagai skeleton, mengikuti persis format tab
+  opname asli perusahaan (grup tanggal dengan Gudang Klinik,
+  Gudang Kantor, Kantor, Total Barang; 36 baris produk). Grup
+  tanggal baru ditambahkan otomatis saat ada pergerakan di
+  tanggal itu.
 - **Absensi + karyawan:** tinggal di database D1
   (sabun-palem-absen), 6 tabel: attendance, photos, verification,
   evidence, evidence_reviews, employees. Foto selfie disimpan
