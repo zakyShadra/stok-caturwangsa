@@ -194,6 +194,17 @@ export async function getSheetTitles(env: SheetsEnv): Promise<string[]> {
   return (data.sheets ?? []).map((s) => s.properties?.title ?? '');
 }
 
+// ID numerik tab berdasarkan judul (untuk hapus tab di rebuild dan
+// untuk format grup tanggal). Null kalau tab tidak ada.
+export async function getSheetId(env: SheetsEnv, title: string): Promise<number | null> {
+  const data = (await sheetsFetch(
+    env,
+    '?fields=sheets.properties(title,sheetId)',
+  )) as { sheets?: { properties?: { title?: string; sheetId?: number } }[] };
+  const found = (data.sheets ?? []).find((s) => s.properties?.title === title);
+  return found?.properties?.sheetId ?? null;
+}
+
 // Sisipkan baris baru tepat di bawah header (baris 2), sehingga baris
 // terbaru selalu paling atas. Kolom A-H ditulis dengan RAW (timestamp
 // ISO tetap teks), kolom I (Tanggal) ditulis terpisah dengan
