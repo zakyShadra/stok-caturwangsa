@@ -14,6 +14,8 @@
 //   POST /api/scan/undo   -> batalkan satu transaksi (baris koreksi)
 //   GET  /api/monthly     -> stok akhir tiap produk per tanggal (?month=YYYY-MM)
 //   POST /api/monthly/create -> buat tab bulanan di Sheet ({month: YYYY-MM})
+//   POST /api/monthly/rebuild -> bangun ulang tab bulanan dari Log ({month: YYYY-MM})
+//   POST /api/monthly/ensure -> tambah grup satu tanggal ({date: YYYY-MM-DD})
 //   GET  /api/marketing   -> agregat penjualan offline dari sheet
 //          Analisis Penjualan Offline 2026 (live, cache maks 60 detik)
 //   GET  /api/karyawan    -> daftar karyawan (seed otomatis kalau kosong)
@@ -36,6 +38,8 @@ import type { SheetsEnv } from './sheets';
 import {
   computeMonthly,
   createMonthlyTab,
+  ensureDateGroup,
+  rebuildMonthlyTab,
   wibToday,
   wibYearMonth,
 } from './monthly';
@@ -310,6 +314,15 @@ app.post('/api/scan', async (c) => {
       body.staff.trim(),
     ]], wibToday());
 
+    // Tambah grup tanggal hari ini di tab bulanan kalau belum ada.
+    // Best-effort: Log adalah sumber kebenaran, kegagalan di sini
+    // tidak boleh menggagalkan scan.
+    try {
+      await ensureDateGroup(c.env, wibToday());
+    } catch (e) {
+      console.error('ensureDateGroup gagal:', e instanceof Error ? e.message : e);
+    }
+
     // Baca ulang stok produk ini supaya aplikasi menampilkan angka baru.
     const stockRows = await readRange(c.env, STOCK_RANGE);
     const row = stockRows.find((r) => r[0] === product.name);
@@ -399,6 +412,13 @@ app.post('/api/scan/undo', async (c) => {
       `Koreksi: batal ${original.note}`,
       staff,
     ]], wibToday());
+    // Baris koreksi adalah pergerakan hari ini; pastikan grup
+    // tanggalnya ada. Best-effort, sama seperti scan.
+    try {
+      await ensureDateGroup(c.env, wibToday());
+    } catch (e) {
+      console.error('ensureDateGroup gagal:', e instanceof Error ? e.message : e);
+    }
     return c.json({ ok: true });
   } catch (e) {
     console.error('POST /api/scan/undo gagal:', e instanceof Error ? e.message : e);
@@ -453,6 +473,60 @@ app.post('/api/monthly/create', async (c) => {
   } catch (e) {
     console.error('POST /api/monthly/create gagal:', e instanceof Error ? e.message : e);
     return jsonError(c, 502, 'Gagal membuat tab bulanan di spreadsheet');
+  }
+});
+
+// POST /api/monthly/rebuild: bangun ulang tab bulanan dari nol
+// ({month: "YYYY-MM"}): hapus tab lama, buat skeleton baru, lalu
+// tambah grup tanggal untuk setiap tanggal di bulan itu yang punya
+// pergerakan di Log. Dipakai untuk migrasi tab lama ke format baru.
+app.post('/api/monthly/rebuild', async (c) => {
+  let body: { month?: unknown } = {};
+  try {
+    body = (await c.req.json()) as { month?: unknown };
+  } catch {
+    // Body kosong: pakai bulan berjalan.
+  }
+  const raw = typeof body.month === 'string' ? body.month : '';
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(raw);
+  const { year, month } = match
+    ? { year: Number(match[1]), month: Number(match[2]) }
+    : wibYearMonth();
+  if (raw !== '' && !match) {
+    return jsonError(c, 400, 'month harus format YYYY-MM');
+  }
+  try {
+    const result = await rebuildMonthlyTab(c.env, year, month);
+    return c.json(result);
+  } catch (e) {
+    console.error('POST /api/monthly/rebuild gagal:', e instanceof Error ? e.message : e);
+    return jsonError(c, 502, 'Gagal membangun ulang tab bulanan di spreadsheet');
+  }
+});
+
+// POST /api/monthly/ensure: tambah grup satu tanggal ke tab bulanan
+// ({date: "YYYY-MM-DD"}). Idempotent: kalau grup tanggal itu sudah
+// ada, tidak menulis apa pun. Dipakai untuk tes trigger tanpa scan.
+app.post('/api/monthly/ensure', async (c) => {
+  let body: { date?: unknown } = {};
+  try {
+    body = (await c.req.json()) as { date?: unknown };
+  } catch {
+    return jsonError(c, 400, 'Isi request bukan JSON yang benar');
+  }
+  const raw = typeof body.date === 'string' ? body.date : '';
+  const valid =
+    /^\d{4}-\d{2}-\d{2}$/.test(raw) &&
+    new Date(`${raw}T00:00:00Z`).toISOString().slice(0, 10) === raw;
+  if (!valid) {
+    return jsonError(c, 400, 'date harus format YYYY-MM-DD yang benar');
+  }
+  try {
+    const result = await ensureDateGroup(c.env, raw);
+    return c.json(result);
+  } catch (e) {
+    console.error('POST /api/monthly/ensure gagal:', e instanceof Error ? e.message : e);
+    return jsonError(c, 502, 'Gagal menambahkan grup tanggal di spreadsheet');
   }
 });
 
