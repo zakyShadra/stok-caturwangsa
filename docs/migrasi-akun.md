@@ -6,7 +6,7 @@ kode aplikasi.
 
 ## Yang perlu dipahami dulu
 
-Backend ini terdiri dari 4 bagian yang terikat ke akun:
+Backend ini terdiri dari 5 bagian yang terikat ke akun:
 
 | Bagian | Terikat ke akun | Saat migrasi |
 | --- | --- | --- |
@@ -14,6 +14,7 @@ Backend ini terdiri dari 4 bagian yang terikat ke akun:
 | Database D1 | Akun Cloudflare tempat dibuat | Buat baru di akun kantor, terapkan skema (Langkah 3b) |
 | Service account Google | Project Google Cloud tempat dibuat | Buat baru di project kantor |
 | Spreadsheet | Pemilik sheet | Tetap sama, hanya dibagikan ke service account baru |
+| Folder arsip foto Drive | Pemilik folder | Buat baru di Drive perusahaan, bagikan ke service account baru (Langkah 2b) |
 
 Kode tidak berubah. Yang berubah hanya akun dan kredensial.
 
@@ -22,8 +23,10 @@ Kode tidak berubah. Yang berubah hanya akun dan kredensial.
 1. Buka console.cloud.google.com dengan email kantor.
 2. Buat project baru (misal namanya `sabun-palem-stok`), atau pakai
    project perusahaan yang sudah ada.
-3. Di project itu, aktifkan **Google Sheets API**
-   (menu API dan Layanan, lalu Cari API).
+3. Di project itu, aktifkan **Google Sheets API** dan **Google
+   Drive API** (menu API dan Layanan, lalu Cari API). Drive API
+   dipakai cron arsip foto; tanpa ini arsip gagal setiap jalan
+   (foto tetap aman di D1, tidak ada yang terhapus).
 4. Buat service account baru (menu IAM dan Admin, lalu Service Account).
    Beri nama yang jelas, misal `stok-sabun-palem`.
 5. Di service account itu, buat key baru: tab Keys, lalu Add Key, lalu
@@ -37,6 +40,37 @@ Kode tidak berubah. Yang berubah hanya akun dan kredensial.
    (bentuknya `nama@project.iam.gserviceaccount.com`).
 3. Beri akses **Editor**, lalu kirim.
 4. Kalau mau, hapus akses service account lama dari daftar Share.
+
+## Langkah 2b: Siapkan folder arsip foto di Drive perusahaan
+
+Foto absen lebih tua dari 2 bulan diarsipkan otomatis ke Google
+Drive (lihat `worker/src/archive.ts`). Folder tujuannya dari env
+`ARCHIVE_DRIVE_FOLDER_ID`, bukan hardcode, jadi migrasi hanya
+mengubah nilai env-nya:
+
+1. Di Google Drive perusahaan, buat folder baru, misal namanya
+   "Arsip Foto Absensi Sabun Palem".
+2. Klik Share di folder itu, masukkan email service account baru
+   (dari Langkah 1), beri akses **Editor**, lalu kirim.
+3. Salin ID folder baru dari URL-nya (bagian setelah
+   `/folders/`), lalu isi ke `worker/wrangler.toml` sebagai nilai
+   `ARCHIVE_DRIVE_FOLDER_ID`. Commit perubahan ini sebelum deploy
+   (Langkah 3).
+4. Kalau isi folder lama perlu pindah, pindahkan manual dari Drive
+   (pilih semua isi folder lama, pindahkan ke folder baru). Isi
+   folder lama tidak ikut pindah otomatis, dan manifest di D1
+   (`photo_archive`) tetap menunjuk ke file ID lama yang masih
+   berlaku selama file-nya tidak dihapus.
+
+Catatan cache: ID folder arsip di-cache di tabel D1
+`drive_folders` dengan kunci root folder ID + path. Setelah
+`ARCHIVE_DRIVE_FOLDER_ID` berubah, cache lama tidak terpakai lagi
+(kuncinya beda) dan cache baru dibangun otomatis dari Drive.
+Kalau mau membersihkan cache lama secara manual:
+
+```sh
+wrangler d1 execute sabun-palem-absen --remote --command "DELETE FROM drive_folders;"
+```
 
 ## Langkah 3: Deploy Worker dari akun kantor
 

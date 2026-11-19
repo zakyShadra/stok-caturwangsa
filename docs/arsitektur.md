@@ -18,6 +18,7 @@ flowchart TD
     Worker -->|Sheets API, service account| Sheet[Google Sheet: SO Detail - COPY DEV]
     Worker -->|D1| D1[(D1: sabun-palem-absen)]
     Worker -->|Sheets API, service account| Analisis[Google Sheet: Analisis Penjualan Offline 2026]
+    Worker -->|cron harian 01:00 WIB| Drive[Google Drive: Arsip Foto Absensi Sabun Palem]
     Worker -->|cron tiap tanggal 1| Sheet
 ```
 
@@ -26,7 +27,8 @@ flowchart TD
 | Aplikasi web | Vite + React 19 + TypeScript + Tailwind 3 | PWA (manifest + service worker). Hosting Cloudflare Pages + GitHub Pages. |
 | Backend | Cloudflare Workers (Hono) | Satu Worker untuk stok, absensi, karyawan, pemasaran. |
 | Stok | Google Sheets | Tab Log Transaksi (append-only) + Stok Terkini (SUMIFS) + tab bulanan. |
-| Absensi + karyawan | Cloudflare D1 (SQLite) | 6 tabel, lihat bagian 4. |
+| Absensi + karyawan | Cloudflare D1 (SQLite) | 8 tabel, lihat bagian 4. |
+| Arsip foto | Google Drive | Foto absen lebih tua dari 2 bulan, lihat bagian 4. |
 | Pemasaran | Google Sheets | Dibaca live dari sheet Analisis. |
 
 URL live: aplikasi https://caturwangsa.ices.my.id/ (utama),
@@ -100,10 +102,11 @@ stok per tanggal, tidak bisa memisahkan Masuk vs Keluar
 (transaksi masuk dan keluar di hari yang sama saling
 meniadakan). Detailnya ada di Log Transaksi.
 
-Tab bulan baru dibuat otomatis oleh cron Worker (`0 17 1 * *`,
-artinya jam 00:00 WIB tanggal 1). Kalau tab bulan itu sudah ada,
-cron melewatinya. Tab lama bisa dibangun ulang ke format baru
-dengan `POST /api/monthly/rebuild`.
+Tab bulan baru dibuat otomatis oleh cron Worker harian
+(`0 18 * * *`, jam 01:00 WIB; tiap tanggal 1 dibuat tab bulan
+baru). Kalau tab bulan itu sudah ada, cron melewatinya. Tab lama
+bisa dibangun ulang ke format baru dengan
+`POST /api/monthly/rebuild`.
 
 ### 3.3 Sheet pemasaran (hanya dibaca)
 
@@ -128,7 +131,7 @@ sheet di atas.
 ## 4. Database D1 (sabun-palem-absen)
 
 Database ID `06dd5164-3722-47df-875f-807394e42aed`. Skema lengkap
-di `worker/schema.sql`. 6 tabel:
+di `worker/schema.sql`. 8 tabel:
 
 | Tabel | Isi |
 | --- | --- |
@@ -138,6 +141,8 @@ di `worker/schema.sql`. 6 tabel:
 | evidence | Bukti kerja yang diunggah staff (file base64 + nama + tipe). |
 | evidence_reviews | Penanda "sudah dicek" Manager: satu baris per karyawan per hari (kunci utama gabungan employee_id + date). |
 | employees | Daftar karyawan: id, name, division, position, phone, active, capabilities (teks JSON, array string). |
+| photo_archive | Manifest arsip foto: photo_key, drive_file_id, drive_path, archived_at. Satu baris per foto yang sudah diunggah ke Drive. |
+| drive_folders | Cache ID folder Drive untuk arsip: path (root folder ID + path relatif) dan folder_id. |
 
 Catatan desain:
 
@@ -149,8 +154,15 @@ Catatan desain:
 - **Foto sebagai base64 di D1**, bukan R2. R2 butuh detail
   billing di akun Cloudflare, jadi tidak dipakai. Foto dikompres
   di sisi klien (maksimal 640px, JPEG 0.82, sekitar 30-100 KB
-  per foto). Untuk 7 karyawan, kapasitas D1 cukup bertahun-tahun.
-  Bentuk API tidak berubah kalau suatu saat pindah ke R2.
+  per foto). D1 free tier dibatasi 500 MB per database, jadi foto
+  tidak disimpan selamanya: cron harian mengarsipkan foto lebih
+  tua dari 2 bulan ke Google Drive (folder "Arsip Foto Absensi
+  Sabun Palem", struktur `{YYYY-MM}/{Nama Karyawan}/{tanggal}_{masuk|pulang|bukti}.jpg`),
+  lalu menghapusnya dari D1 setelah upload terverifikasi dan
+  manifest tertulis di `photo_archive` (lihat
+  `worker/src/archive.ts`). Catatan absennya tetap ada; UI
+  menampilkan "Foto sudah diarsipkan ke Drive" untuk foto yang
+  sudah pindah.
 - **Seed employees.** Saat tabel employees kosong (pertama kali),
   GET /api/karyawan mengisinya dari 5 karyawan awal: Putra (1),
   Dyas Nakata (2, capability `view-marketing`), Pak Andy (3),
@@ -175,12 +187,14 @@ Base URL: https://stok-sabun-palem.zakyshadra.workers.dev
 | POST /api/monthly/rebuild | Bangun ulang tab bulanan dari Log (migrasi format) |
 | POST /api/monthly/ensure | Tambah grup satu tanggal ke tab bulanan |
 | GET /api/marketing | Agregat penjualan offline (dari sheet Analisis) |
-| GET /api/absen?month=YYYY-MM | Daftar absen + review (dari D1) |
+| GET /api/absen?from&to | Daftar absen + review (dari D1) |
+| GET /api/absen/pending | Semua catatan pending, semua tanggal |
 | POST /api/absen/check-in | Absen masuk (GPS + selfie) |
 | POST /api/absen/check-out | Absen pulang (GPS + selfie) |
-| POST /api/absen/approve | Setujui/Tolak absen (Bos) |
+| POST /api/absen/approval | Setujui/Tolak absen (Bos) |
 | POST /api/absen/leave | Ajukan Izin/Cuti |
 | POST /api/absen/evidence | Unggah bukti kerja |
+| DELETE /api/absen/evidence/:id | Hapus bukti kerja (ditolak kalau sudah dicek Manager) |
 | POST /api/absen/evidence-review | Tandai bukti kerja sudah dicek (Manager) |
 | GET /api/absen/foto/:key | Ambil foto selfie |
 | GET /api/karyawan | Daftar karyawan (seed kalau kosong) |

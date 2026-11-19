@@ -218,18 +218,33 @@ Tidak perlu peran baru, tidak perlu migrasi database (capabilities
 disimpan sebagai teks JSON).
 
 **Mengubah lokasi kantor / radius geofence.** Ubah
-`OFFICE_LOCATION` dan `GEOFENCE_RADIUS_M` di
-`src/lib/attendance.ts`. Koordinat saat ini dari geocoding dan bisa
-meleset dari pagar pabrik; ukur ulang dengan GPS di lokasi kalau
-staff sering ditolak padahal sudah di pabrik.
+`OFFICE_LOCATION` dan `GEOFENCE_RADIUS_METERS` di
+`src/lib/attendance.ts` DAN salinannya di
+`worker/src/attendance.ts` (server menghitung jarak sendiri dan
+tidak percaya jarak dari aplikasi). Koordinat saat ini dari
+geocoding dan bisa meleset dari pagar pabrik; ukur ulang dengan
+GPS di lokasi kalau staff sering ditolak padahal sudah di pabrik.
 
 **Mengubah daftar divisi.** Ubah array `DIVISIONS` di
 `src/pages/Employees.tsx` (dipakai dropdown form karyawan).
 Divisi hanya label, tidak mengubah izin apa pun.
 
-**Menambah tab bulanan manual.** Normalnya cron tanggal 1 membuat
-tab bulan baru otomatis. Kalau perlu membuat manual, panggil
-`POST /api/monthly/create` dengan body `{"month": "YYYY-MM"}`.
+**Menambah tab bulanan manual.** Normalnya cron harian (jam 01:00
+WIB) membuat tab bulan baru tiap tanggal 1 secara otomatis. Kalau
+perlu membuat manual, panggil `POST /api/monthly/create` dengan
+body `{"month": "YYYY-MM"}`.
+
+**Arsip foto absen.** Cron harian yang sama mengarsipkan foto
+(selfie + bukti) lebih tua dari 2 bulan ke Google Drive (folder
+"Arsip Foto Absensi Sabun Palem", ID dari env
+`ARCHIVE_DRIVE_FOLDER_ID`), maksimal 100 foto per jalan. Urutan
+per foto: upload ke Drive, verifikasi (file ID + ukuran cocok),
+tulis manifest ke tabel `photo_archive`, baru hapus dari D1.
+Kalau langkah apa pun gagal, foto tetap di D1 dan dicoba lagi
+besok. ID folder di-cache di tabel `drive_folders`; kalau folder
+di Drive dihapus manual dan arsip gagal terus, reset cache-nya:
+`wrangler d1 execute sabun-palem-absen --remote --command "DELETE FROM drive_folders;"`.
+Arsip pertama baru jalan saat ada foto lebih tua dari 2 bulan.
 
 **Membangun ulang tab bulanan.** Untuk migrasi tab lama ke format
 baru, panggil `POST /api/monthly/rebuild` dengan body
@@ -257,5 +272,6 @@ karena D1 tidak ikut pindah bersama kode Worker.
   masuk dan keluar di hari yang sama saling meniadakan di tab
   itu; detailnya ada di tab Log Transaksi.
 - **Foto disimpan di D1 sebagai base64.** R2 tidak dipakai karena
-  butuh detail billing. Untuk 7 karyawan, kapasitas D1 cukup
-  bertahun-tahun pada ukuran foto hasil kompres saat ini.
+  butuh detail billing. D1 free tier dibatasi 500 MB per database,
+  jadi foto lebih tua dari 2 bulan diarsipkan ke Google Drive lalu
+  dihapus dari D1 (lihat bagian arsip foto di atas).
