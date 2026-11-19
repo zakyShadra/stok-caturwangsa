@@ -15,11 +15,23 @@ export default function Reports() {
   const { records, ensureMonth } = useAttendanceState();
   const { employees } = useEmployees();
 
-  // Rentang bisa melewati bulan berjalan: muat bulan awal dan bulan
-  // akhir dari server supaya laporannya lengkap.
+  // Rentang bisa melewati bulan berjalan: muat SEMUA bulan di antara
+  // tanggal awal dan akhir, bukan cuma dua ujungnya, supaya bulan
+  // tengah tidak hilang dari total dan CSV.
   useEffect(() => {
-    void ensureMonth(from.slice(0, 7));
-    if (to.slice(0, 7) !== from.slice(0, 7)) void ensureMonth(to.slice(0, 7));
+    const start = from.slice(0, 7);
+    const end = to.slice(0, 7);
+    if (start > end) return;
+    let [y, m] = start.split('-').map(Number);
+    const [y1, m1] = end.split('-').map(Number);
+    while (y < y1 || (y === y1 && m <= m1)) {
+      void ensureMonth(`${y}-${String(m).padStart(2, '0')}`);
+      m += 1;
+      if (m > 12) {
+        m = 1;
+        y += 1;
+      }
+    }
   }, [from, to, ensureMonth]);
 
   const filtered = useMemo(
@@ -103,6 +115,12 @@ export default function Reports() {
             />
           </div>
         </div>
+        {from > to ? (
+          <p className="mt-4 rounded-button bg-warning/10 px-4 py-3 text-base font-bold text-warning-ink">
+            Tanggal awal lebih besar dari tanggal akhir, laporan kosong.
+            Perbaiki rentangnya dulu.
+          </p>
+        ) : null}
         <div className="mt-4">
           <BigButton tone="primary" full onClick={downloadCSV}>
             Unduh CSV (untuk Excel)
