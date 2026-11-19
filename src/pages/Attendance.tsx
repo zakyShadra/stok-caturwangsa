@@ -255,6 +255,13 @@ export default function Attendance() {
   const handleRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (myEmployeeId === null) return;
+    const daysBack = Math.round(
+      (Date.parse(jakartaDate(0)) - Date.parse(requestDate)) / 86400000,
+    );
+    if (daysBack > 3) {
+      setNote('Pengajuan susulan maksimal 3 hari ke belakang. Tanggal yang lebih lama tidak bisa diajukan.');
+      return;
+    }
     const existing = records.find((r) => r.employeeId === myEmployeeId && r.date === requestDate);
     if (existing) {
       setNote(`Tanggal ${formatDateID(requestDate)} sudah ada catatan absen, tidak bisa mengajukan lagi.`);
@@ -371,7 +378,9 @@ export default function Attendance() {
           <h2 className="text-lg font-bold text-ink">Ajukan Izin / Cuti</h2>
           <p className="text-base text-ink-muted">
             Pengajuan menunggu persetujuan Bos. Sebelum disetujui, statusnya
-            tampil sebagai Izin atau Cuti (menunggu).
+            tampil sebagai Izin atau Cuti (menunggu). Pengajuan susulan
+            (misal sakit kemarin, baru diajukan hari ini) boleh maksimal
+            3 hari ke belakang dan ditandai Susulan di antrean Bos.
           </p>
           <div>
             <label htmlFor="req-date" className="mb-2 block text-base font-bold text-ink">
@@ -417,6 +426,7 @@ export default function Attendance() {
             {pending.map((r) => {
               const v = verificationByRecord[verificationKey(r.employeeId, r.date)]?.masuk;
               const isLeave = r.status === 'Izin' || r.status === 'Cuti';
+              const isSusulan = isLeave && r.date < jakartaDate(0);
               return (
                 <article
                   key={`${r.employeeId}-${r.date}`}
@@ -427,7 +437,14 @@ export default function Attendance() {
                       <h3 className="text-base font-bold text-ink">{employeeName(r.employeeId)}</h3>
                       <p className="text-base text-ink-muted">{formatDateID(r.date)}</p>
                     </div>
-                    <AttendanceBadge status={r.status} />
+                    <div className="flex gap-2">
+                      {isSusulan ? (
+                        <span className="inline-flex items-center rounded-full bg-info/10 px-2.5 py-1 text-sm font-bold text-info-ink">
+                          Susulan
+                        </span>
+                      ) : null}
+                      <AttendanceBadge status={r.status} />
+                    </div>
                   </div>
                   {isLeave ? (
                     <p className="mt-2 text-base text-ink">Pengajuan {r.status}.</p>

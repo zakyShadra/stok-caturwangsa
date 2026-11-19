@@ -30,6 +30,11 @@
 //   pending). Izin/Cuti tidak bisa diajukan kalau tanggal itu sudah
 //   ada catatan, dan sebaliknya.
 // - Absen pulang butuh catatan absen masuk yang belum ditolak.
+// - Tanggal check-in, check-out, dan bukti kerja harus hari ini
+//   (WIB); tanggal lain ditolak. Bukti kerja juga butuh catatan
+//   absen di tanggal itu (tidak ada bukti yatim). Izin/Cuti boleh
+//   diajukan untuk tanggal masa depan, atau susulan maksimal 3 hari
+//   ke belakang.
 // - Geofence ditegakkan server-side: jarak dihitung ulang dari
 //   lat/lon ke kantor, jarak dari aplikasi TIDAK dipercaya. Di luar
 //   radius 200 m dengan akurasi GPS bagus, check-in/out ditolak.
@@ -104,6 +109,16 @@ function jsonError(c: { json: (body: object, status: number) => Response }, stat
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+// Tanggal hari ini dalam zona Asia/Jakarta, format YYYY-MM-DD.
+function todayJakarta(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
 }
 
 // Waktu sekarang dalam zona Asia/Jakarta, format "YYYY-MM-DD HH:MM".
@@ -235,12 +250,7 @@ attendanceRoutes.get('/', async (c) => {
   }
   const db = c.env.sabun_palem_absen;
   try {
-    const today = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Jakarta',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(new Date());
+    const today = todayJakarta();
     const start = from !== '' ? from : `${today.slice(0, 7)}-01`;
     const end = to !== '' ? to : today;
     const rows = await db
@@ -377,6 +387,9 @@ attendanceRoutes.post('/check-in', async (c) => {
   const employeeId = body.employeeId as number;
   const date = body.date as string;
   const time = body.time as string;
+  if (date !== todayJakarta()) {
+    return jsonError(c, 400, 'Tanggal absen harus hari ini');
+  }
   try {
     const existing = await db
       .prepare('SELECT * FROM attendance WHERE employee_id = ? AND date = ?')
@@ -452,6 +465,9 @@ attendanceRoutes.post('/check-out', async (c) => {
   const employeeId = body.employeeId as number;
   const date = body.date as string;
   const time = body.time as string;
+  if (date !== todayJakarta()) {
+    return jsonError(c, 400, 'Tanggal absen harus hari ini');
+  }
   try {
     const existing = await db
       .prepare('SELECT * FROM attendance WHERE employee_id = ? AND date = ?')
@@ -546,6 +562,14 @@ attendanceRoutes.post('/leave', async (c) => {
   ) {
     return jsonError(c, 400, 'employeeId, date, atau type tidak benar');
   }
+  // Pengajuan susulan (sakit kemarin, baru diajukan hari ini) boleh
+  // maksimal 3 hari ke belakang; tanggal masa depan tetap boleh.
+  const daysBack = Math.round(
+    (Date.parse(todayJakarta()) - Date.parse(body.date)) / 86400000,
+  );
+  if (daysBack > 3) {
+    return jsonError(c, 400, 'Pengajuan susulan maksimal 3 hari ke belakang');
+  }
   const db = c.env.sabun_palem_absen;
   try {
     const existing = await db
@@ -604,8 +628,20 @@ attendanceRoutes.post('/evidence', async (c) => {
   if (photo.base64.length > MAX_PHOTO_BASE64) {
     return jsonError(c, 400, 'File terlalu besar (maksimal sekitar 500 KB)');
   }
+  if (body.date !== todayJakarta()) {
+    return jsonError(c, 400, 'Bukti kerja hanya bisa dilampirkan untuk hari ini');
+  }
   const db = c.env.sabun_palem_absen;
   try {
+    // Bukti tanpa catatan absen tidak pernah tampil di UI (bukti
+    // yatim), jadi tolak dari awal.
+    const attendance = await db
+      .prepare('SELECT id FROM attendance WHERE employee_id = ? AND date = ?')
+      .bind(body.employeeId, body.date)
+      .first<{ id: number }>();
+    if (!attendance) {
+      return jsonError(c, 400, 'Tidak ada catatan absen untuk tanggal ini');
+    }
     const key = `bukti-${body.employeeId}-${body.date}-${randomSuffix()}`;
     await storePhoto(db, key, photo.mime, photo.base64);
     const res = await db
