@@ -363,9 +363,11 @@ function validateCheck(body: CheckBody): string | null {
   if (typeof body.time !== 'string' || !TIME_PATTERN.test(body.time)) return 'time harus format HH:MM';
   if (typeof body.lat !== 'number' || body.lat < -90 || body.lat > 90) return 'lat tidak benar';
   if (typeof body.lon !== 'number' || body.lon < -180 || body.lon > 180) return 'lon tidak benar';
-  if (typeof body.distanceMeters !== 'number' || body.distanceMeters < 0 || body.distanceMeters > 100000) {
-    return 'distanceMeters tidak benar';
-  }
+  // distanceMeters dari aplikasi TIDAK divalidasi: server menghitung
+  // jarak sendiri dari lat/lon (lihat checkGeofence) dan tidak pernah
+  // memakai nilai ini. Dulu ada cap 100000 yang keliru menolak posisi
+  // akurasi-jelek yang jaraknya lebih dari 100 km, padahal posisi
+  // seperti itu seharusnya lolos lewat jalur akurasi-jelek.
   // accuracy opsional (aplikasi lama tidak mengirim); kalau ada harus
   // angka yang masuk akal. Dipakai untuk flag lokasi tidak akurat.
   if (
